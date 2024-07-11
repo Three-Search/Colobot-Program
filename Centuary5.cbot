@@ -1,0 +1,37 @@
+extern void object::Centuary5()
+{
+	object o;
+	
+	thump();
+	
+	o = FindBot(WingedOrgaShooter);
+	turn(direction(o.position));
+	missionComplete();
+}
+
+public object object::FindBot(int c)
+{
+	int i = 0;
+	object item;
+	
+	do
+	{
+		item = retobject(i++);
+	}
+	while(item == null || item.category != c);
+	
+	return item;
+}
+
+public void object::Mission()
+{
+	attack();
+	go(SpaceShip);
+	
+	while (!astronautOnShip())
+	{
+		wait(10);
+	}
+	missionComplete();
+	takeoff();
+}

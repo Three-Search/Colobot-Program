@@ -1,0 +1,171 @@
+extern void object::Crystalium2()
+{
+	SatCom com();
+	
+	Build(BotFactory);
+	go(SpaceShip);
+	Build(WingedSniffer,"Mission()");
+	moveObjToObj(PowerCell,WingedSniffer);
+	
+	go(SpaceShip);
+	waitForAvailable(PowerSpot);
+	Build(Converter);
+	
+	go(SpaceShip);
+	camerafocus(radar(WingedGrabber));
+	waitForAvailable(Converter);
+	waitForAvailable(Titanium,location(Converter));
+	camerafocus(this);
+	moveObjToPlace(Titanium,location(PowerSpot));
+	Build(PowerStation,location((Titanium)));
+	
+	go(SpaceShip);
+	waitForAvailable(Titanium,location(Converter));
+	Build(WingedShooter,"Mission()");
+	moveObjToObj(PowerCell,WingedShooter);
+	
+	go(SpaceShip);
+	waitForAvailable(Titanium,location(Converter));
+	Build(RadarStation);
+	
+	go(SpaceShip);
+	while (Radar(AlienWorm) != null)
+	{
+		if (radar(WingedShooter) == null)
+		{
+			waitForAvailable(Titanium,location(Converter));
+			Build(WingedShooter,"Mission()");
+			moveObjToObj(PowerCell,WingedShooter);
+			go(SpaceShip);
+		}
+		else
+		{
+			wait(5);
+		}
+	}
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == WingedSniffer)
+	{
+		SniffMission();
+	}
+	else if (category == WingedGrabber)
+	{
+		GrabMission();
+	}
+	else
+	{
+		ShootMission();
+	}
+}
+
+public void object::SniffMission()
+{
+	SatCom com();
+	
+	object o;
+	point p,c,r;
+	o = search(Crystal,location(SpaceShip));
+	o = search(Crystal,o.position,25,1000);
+	c = o.position;
+	float radius;
+	
+	int numPoints = 36;
+	float angleIncrement = 360 / numPoints;
+	float angle;
+	
+	for (int i = 0; i < numPoints; i++)
+	{
+		radius = 10;
+		angle = angleIncrement * i;
+		p.x = c.x + radius * cos(angle);
+		p.y = c.y + radius * sin(angle);
+		p.z = topo(p);
+		while (topo(p) > 0)
+		{
+			if (flatground(p,3) > 2)
+			{
+				//produce(p,0,YellowFlag);
+				break;
+			}
+			else
+			{
+				//produce(p,0,RedFlag);
+			}
+			radius += 2;
+			p.x = c.x + radius * cos(angle);
+			p.y = c.y + radius * sin(angle);
+			p.z = topo(p);
+		}
+		if (topo(p) > 0 && flatground(p,3) > 2)
+		{
+			//produce(p,0,GreenFlag);
+			r.x = p.x;
+			r.y = p.y;
+			r.z = p.z;
+			break;
+		}
+	}
+	go(r);
+	sniff();
+	
+	go(flatSpace());
+	sniff();
+	
+	go(space(position,30,60,1));
+	missionComplete();
+}
+
+public void object::GrabMission()
+{
+	object item;
+	point p;
+	
+	waitForAvailable(TitaniumSpot);
+	moveObjToPlace(Titanium,location(TitaniumSpot));
+	Build(Derrick,location(Titanium));
+	p = space(position,15,30,1);
+	go(p);
+	waitForAvailable(Derrick);
+	waitForAvailable(TitaniumOre,location(Derrick));
+	waitForAvailable(Converter);
+	moveObjToObj(TitaniumOre,Converter);
+	
+	for (int i = 0; i < 5; i++)
+	{
+		if (energyCell.energyLevel < 0.3)
+		{
+			chargeCell();
+		}
+		go(Derrick);
+		waitForAvailable(TitaniumOre,location(Derrick));
+		while (found(Titanium))
+		{
+			wait(5);
+		}
+		moveObjToObj(TitaniumOre,Converter);
+	}
+	go(p);
+	missionComplete();
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	com.safeTopo = 2;
+	com.safeFlatGround = 2;
+	com.checkLOS = false;
+	while (Radar(AlienWorm) != null)
+	{
+		attack();
+		gotoSafeLZ();
+		wait(5);
+	}
+}

@@ -1,0 +1,130 @@
+extern void object::Centuary3()
+{
+	SatCom com();
+	
+	object cell,o;
+	point points[],p;
+	
+	cell = findPowerCell();
+	go(cell);
+	switchCell();
+	
+	go(Radar(NuclearPlant));
+	moveObjToObj(UraniumOre,NuclearPlant);
+	waitForAvailable(NuclearCell);
+	go(NuclearPlant);
+	switchCell();
+	grab();
+	go(space(position,15,30,4));
+	drop();
+	
+	go(Radar(Converter));
+	Build(BotFactory);
+	Build(RepairCenter);
+	Build(WingedOrgaShooter,"Mission()");
+	repair();
+	
+	cell = findPowerCell();
+	go(freePoint(cell.position,12,36));
+	go(cell);
+	switchCell();
+	grab();
+	loadNuclearCell(WingedOrgaShooter);
+	
+	Build(RadarStation);
+	
+	go(SpaceShip);
+	while (!astronautOnShip())
+	{
+		wait(10);
+	}
+	while (found(com.ants) && found(WingedOrgaShooter))
+	{
+		Message("Wait for WingedOrgaShooter to eliminate enemies");
+		wait(5);
+	}
+	
+	if (!found(WingedOrgaShooter))
+	{
+		cell = findPowerCell();
+		go(freePoint(cell.position,12,36));
+		go(cell);
+		switchCell();
+		
+		Build(WingedOrgaShooter,"Mission()");
+		
+		o = Radar(UraniumOre);
+		while (search(com.ants,o.position,0,100) != null)
+		{
+			wait(5);
+		}
+		
+		moveObjToObj(UraniumOre,NuclearPlant);
+		waitForAvailable(NuclearCell);
+		go(NuclearPlant);
+		switchCell();
+		grab();
+		go(space(position,15,30,4));
+		drop();
+		
+		moveObjToObj(UraniumOre,NuclearPlant);
+		waitForAvailable(NuclearCell);
+		go(NuclearPlant);
+		grab();
+		moveObjToObj(NuclearCell,WingedOrgaShooter);
+		
+		go(SpaceShip);
+		while (found(com.ants) && found(WingedOrgaShooter))
+		{
+			Message("Wait for WingedOrgaShooter to eliminate enemies");
+			wait(5);
+		}
+	}
+	
+	missionComplete();
+	takeoff();
+}
+
+public object object::findPowerCell()
+{
+	object cells[],o,cell;
+	float maxEnergy = 0;
+	float minDis = 999999;
+	
+	cells = RadarAll(PowerCell);
+	
+	for (int i = 0; i < sizeof(cells); i++)
+	{
+		o = cells[i];
+		if (o.energyLevel > maxEnergy)
+		{
+			cell = o;
+			maxEnergy = o.energyLevel;
+		}
+	}
+	
+	for (int i = 0; i < sizeof(cells); i++)
+	{
+		o = cells[i];
+		if (o.energyLevel == maxEnergy && distance2d(this.position,o.position) < minDis)
+		{
+			cell = o;
+			minDis = distance2d(this.position,o.position);
+		}
+	}
+	
+	return cell;
+}
+
+public void object::Mission()
+{
+	SatCom com();
+	object o;
+	
+	checkEnergyCell();
+	
+	o = Radar(NuclearPlant);
+	go(space(o.position,15,20,4));
+	com.shieldThreshold = 0.7;
+	attack();
+}

@@ -1,0 +1,29 @@
+extern void object::Crystalium3()
+{
+	SatCom com();
+	
+	object item;
+	
+	while (!found(BlackBox))
+	{
+		item = radar(WingedGrabber);
+		
+		if (distance2d(item.position,location(SpaceShip)) < 10)
+		{
+			item = radar(WingedGrabber,0,360,0,1000,-1);
+		}
+		
+		if (distance2d(position,item.position) > 80)
+		{
+			fly(item.position);
+		}
+		else
+		{
+			motor(0,0);
+		}
+	}
+	
+	moveObjToObj(BlackBox,SpaceShip);
+	missionComplete();
+	takeoff();
+}

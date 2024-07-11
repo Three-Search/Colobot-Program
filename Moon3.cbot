@@ -1,0 +1,92 @@
+extern void object::Moon3()
+{
+	object item;
+	
+	while(radar(Target2)!=null)
+	{
+		fly(Target2);
+	}
+	
+	item = radar(SpaceShip);
+	goto(item.position);
+}
+
+public void object::fly(int c)
+{
+	object o = radar(c);
+	fly(o);
+}
+
+public void object::fly(object o)
+{
+	while (o != null)
+	{
+		if(this.temperature < 0.8)
+		{
+			jet(throttle(this.position.z, this.velocity.z, o.position.z-1));
+			pointAt(direction(o.position));
+		}
+		else
+		{
+			motor(0,0);
+			jet(-0.4);
+			while (this.temperature != 0)
+			{
+				wait(0.1);
+			}
+		}
+		wait(0.1);
+		if (o == null)
+		{
+			break;
+		}
+		else
+		{
+			if (distance(this.position,o.position) < 5)
+			{
+				break;
+			}
+		}
+	}
+}
+
+public float throttle(float objSourceZ, float objSourceVelZ, float objTargetZ)
+{
+	if(objSourceZ + 5 < objTargetZ)
+	{
+		return 1;
+	}
+	else if(objSourceZ - 5 > objTargetZ)
+	{
+		return -1;
+	}
+	else
+	{
+		return (objTargetZ - objSourceZ - (objSourceVelZ/2))/5;
+	}
+}
+
+public void pointAt(float dir)
+{
+	if(dir < -10)
+	{
+		motor(1,0);
+	}
+	else if(dir > 10 )
+	{
+		motor(0,1);
+	}
+	else
+	{
+		if(dir < 0)
+		{
+			float val = (dir/10)+1;
+			motor(1, val);
+		}
+		else
+		{
+			float val = -(dir/10)+1;
+			motor(val,1);
+		}
+	}
+}

@@ -1,0 +1,29 @@
+extern void object::Tropica5()
+{
+	SatCom com();
+	
+	flatSpace();
+	flatSpace();
+	
+	Build(Converter);
+	goGrab(TitaniumOre);
+	waitForAvailable(Converter);
+	Build(BotFactory);
+	Build(Subber,"Mission()");
+	
+	goGrab(PowerCell);
+	waitForAvailable(Subber);
+	moveObjToObj(PowerCell,Subber);
+	
+	go(SpaceShip);
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	moveObjToObj(BlackBox,SpaceShip);
+	missionComplete();
+	takeoff();
+}

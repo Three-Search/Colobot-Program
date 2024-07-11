@@ -1,0 +1,55 @@
+extern void object::SpeedAttack()
+{
+	SatCom com();
+	
+	//int bot = LeggedOrgaShooter;
+	int bot = WingedShooter;
+	int numBot = 1;
+	
+	if (radar(RepairCenter) == null)
+	{
+		produce(flatSpace(),0,RepairCenter);
+	}
+	
+	while (found(com.ants))
+	{
+		if (!found(bot))
+		{
+			for (int i = 0; i < numBot; i++)
+			{
+				produce(flatSpace(),0,bot,"Shooter.cbot",100);
+			}
+			
+			produce(flatSpace(),0,WingedOrgaShooter,"Shooter.cbot",100);
+		}
+		wait(10);
+	}
+	
+}
+
+public void object::Shooter()
+{
+	SatCom com();
+	
+	com.safeTopo = 0;
+	com.safeFlatGround = 0;
+	com.temperatureThreshold = 0.4;
+	com.energyThreshold = 0.15;
+	com.shieldThreshold = 0.6;
+	com.attackRange = 45;
+	com.checkLOS = false;
+	com.plantFlag = false;
+	
+	wait(10*rand());
+	camerafocus(this);
+	if (category == WingedOrgaShooter)
+	{
+		airGuard(radar(WingedShooter),60);
+	}
+	else
+	{
+		attack();
+	}
+}
+
+

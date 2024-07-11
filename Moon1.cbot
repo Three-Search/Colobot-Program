@@ -1,0 +1,77 @@
+extern void object::Moon1()
+{
+	object item,rs,spaceship,cell1,cell2,cell3,cell4;
+	object titan1,titan2,titan3,titan4;
+	point start,p1,p2;
+	
+	SatCom com();
+	com.items = radarall(TitaniumOre);
+	
+	start = position;
+	spaceship = radar(SpaceShip);
+	
+	Build(ResearchCenter);
+	
+	goGrab(PowerCell);
+	waitForAvailable(com.buildCategory);
+	
+	moveObjToObj(PowerCell,ResearchCenter);
+	Message("Researching "+ResearchWinged);
+	research(ResearchWinged);
+	
+	Build(BotFactory);
+	Build(WingedGrabber,"Mission(1)");
+	
+	goGrab(PowerCell);
+	waitForAvailable(WingedGrabber);
+	moveObjToObj(PowerCell,WingedGrabber);
+	
+	Build(WingedGrabber,"Mission(2)");
+	
+	camerafocus(this);
+	p2 = position;
+	goGrab(PowerCell);
+	go(p2);
+	waitForAvailable(WingedGrabber,location(BotFactory));
+	moveObjToObj(PowerCell,WingedGrabber);
+	
+	go(SpaceShip);
+	goGrab(PowerCell);
+	go(start);
+	drop();
+	switchCell();
+}
+
+public void object::Mission(int i)
+{
+	SatCom com();
+	object item1,item2;
+	object ship = radar(SpaceShip);
+	
+	checkEnergyCell();
+	
+	if (i == 1)
+	{
+		item1 = com.items[0];
+		item2 = com.items[1];
+	}
+	
+	if (i == 2)
+	{
+		item1 = com.items[2];
+		item2 = com.items[3];
+		wait(5);
+	}
+	
+	go(item1);
+	grab();
+	go(ship);
+	go(getSpaceOnShip());
+	turnAway(ship.position);
+	drop(Behind);
+	
+	go(item2);
+	grab();
+	go(ship);
+	go(getSpaceOnShip());
+}

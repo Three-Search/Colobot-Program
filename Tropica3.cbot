@@ -1,0 +1,76 @@
+extern void object::Tropica3()
+{
+	SatCom com();
+	
+	Message("Please start a program of Winged Grabber bot to call Mission() function of this bot");
+	waitForAvailable(RepairCenter);
+	
+	Build(ResearchCenter);
+	Build(BotFactory);
+	Build(WingedShooter,"Mission()");
+	
+	go(SpaceShip);
+	missionComplete();
+	camerafocus(radar(WingedGrabber));
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == WingedGrabber)
+	{
+		GrabMission();
+	}
+	else
+	{
+		ShootMission();
+	}
+}
+
+public void object::GrabMission()
+{
+	object ship,blueFlag,item;
+	point start,p;
+	
+	start = position;
+	ship = radar(SpaceShip);
+	blueFlag = radar(BlueFlag);
+	
+	item = radar(Titanium,0,360,10);
+	Build(PowerStation,item.position);
+	waitForAvailable(PowerStation);
+	goGrab(Titanium);
+	turnAway(ship.position);
+	move(5);
+	p = flatspace(blueFlag.position,3,15,30,1);
+	moveObjToPlace(Titanium,p);
+	Build(RepairCenter,location(Titanium));
+	
+	goGrab(PowerCell);
+	waitForAvailable(ResearchCenter);
+	moveObjToObj(PowerCell,ResearchCenter);
+	research(ResearchShooter);
+	
+	goGrab(PowerCell);
+	waitForAvailable(WingedShooter);
+	moveObjToObj(PowerCell,WingedShooter);
+	
+	Build(RadarStation);
+	Build(ExchangePost);
+	
+	go(SpaceShip);
+	missionComplete();
+	camerafocus(radar(WingedShooter));
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	attack();
+	fly(radar(SpaceShip));
+	go(SpaceShip);
+	missionComplete();
+	takeoff();
+}

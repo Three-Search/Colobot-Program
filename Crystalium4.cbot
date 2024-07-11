@@ -1,0 +1,43 @@
+extern void object::Crystalium4()
+{
+	SatCom com();
+	
+	go(Radar(PowerStation));
+	
+	turn(180);
+	move(20);
+	
+	moveObjToObj(PowerCell,WingedShooter);
+	
+	message(category+": Run Mission() program on WingedShooter to eliminate ants");
+	
+	while (found(AlienAnt))
+	{
+		wait(10);
+	}
+	
+	go(freePoint(location(BlackBox),12,36));
+	moveObjToObj(BlackBox,SpaceShip);
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	SatCom com();
+	
+	com.safeTopo = 0;
+	com.safeFlatGround = 0;
+	com.temperatureThreshold = 0.6; // 0.55
+	com.energyThreshold = 0.4; // 0.45
+	//com.shieldThreshold = 0.70;
+	com.checkLOS = false;
+	//com.minAimAngle = -19;
+	//com.maxAimAngle = -5;
+	//com.plantFlag = true;
+	
+	attack();
+	landAndRest(position);
+	missionComplete();
+	camerafocus(radar(WingedGrabber));
+}

@@ -1,0 +1,94 @@
+extern void object::Saari1()
+{
+	SatCom com();
+	
+	point p,s;
+	object o;
+	
+	s = position;
+	o = radar(WingedShooter);
+	
+	p.x = o.position.x;
+	p.y = o.position.y;
+	p.z = o.position.z;
+	
+	waitForAvailable(PowerStation);
+	moveObjToObj(PowerCell,WingedShooter);
+	
+	while (found(AlienAnt))
+	{
+		message(category+": Wait for WingedShooter to eliminate ants");
+		wait(10);
+	}
+	
+	while (com.attackRange != 55)
+	{
+		wait(5);
+	}
+	
+	go(location(WingedShooter));
+	grab();
+	chargeCell();
+	
+	go(UraniumOre);
+	turn(90);
+	drop();
+	switchCell();
+	turn(-90);
+	grab();
+	turn(180);
+	move(10);
+	go(SpaceShip);
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == WingedShooter)
+	{
+		ShootMission();
+	}
+	else
+	{
+		RecycleMission();
+	}
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	point p = position;
+	
+	com.safeTopo = 0;
+	com.safeFlatGround = 0;
+	com.temperatureThreshold = 0.65;
+	com.energyThreshold = 0.35;
+	com.shieldThreshold = 0.70;
+	com.attackRange = 45;
+	com.checkLOS = false;
+	
+	attack();
+	go(p);
+	com.attackRange = 55;
+	missionComplete();
+	camerafocus(radar(WheeledGrabber));
+}
+
+public void object::RecycleMission()
+{
+	object[] wrecks;
+	point p;
+	
+	wrecks = radarall(Wreck);
+	
+	go(wrecks[1]);
+	recycle();
+	Build(PowerStation,location(Titanium));
+	
+	go(space(position,24,48,8));
+	missionComplete();
+}

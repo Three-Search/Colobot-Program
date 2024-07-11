@@ -1,0 +1,10 @@
+extern void object::Volcano6()
+{
+	jet(0.3);
+	motor(-1,-1);
+	wait(2);
+	attack();
+	go(SpaceShip);
+	missionComplete();
+	takeoff();
+}

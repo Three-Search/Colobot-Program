@@ -1,0 +1,43 @@
+extern void object::Moon4()
+{
+	SatCom com();
+	
+	object item;
+	
+	item = radar(Titanium);
+	if (distance(position,item.position) < 10)
+	{
+		message(category+": Please run a program of Winged Grabber bot to call Mission()");
+		wait(5);
+	}
+	
+	waitForAvailable(Converter);
+	
+	camerafocus(this);
+	Build(PowerStation);
+	turn(-120);
+	move(6);
+	waitForAvailable(PowerStation);
+	
+	wait(5);
+	chargeCell();
+	chargeCell(WingedGrabber);
+	
+	Build(RadarStation);
+	go(SpaceShip);
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	SatCom com();
+	
+	Build(Converter);
+	go(space(position,20,40,10));
+	waitForAvailable(RadarStation);
+	
+	camerafocus(this);
+	moveObjToObj(BlackBox,SpaceShip);
+	missionComplete();
+	takeoff();
+}

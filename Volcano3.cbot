@@ -1,0 +1,41 @@
+extern void object::Volcano3()
+{
+	SatCom com();
+	
+	object o;
+	point p;
+	goGrab(NuclearCell);
+	o = radar(BotFactory);
+	p = aheadPoint(o,5);
+	p.z = topo(p);
+	go(p);
+	turn(direction(o.position));
+	move(2.5);
+	drop();
+	move(-7);
+	go(SpaceShip);
+	
+	while (radar(com.ants) != null)
+	{
+		message(category+": Wait for LeggedShooter to eliminate ants");
+		wait(5);
+	}
+	
+	camerafocus(this);
+	goGrab(BlackBox);
+	go(SpaceShip);
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	SatCom com();
+	
+	move(-7);
+	turn(90);
+	move(10);
+	
+	com.attackRange = 38;
+	landAttack();
+}

@@ -1,0 +1,189 @@
+extern void object::Orpheon2()
+{
+	SatCom com();
+	
+	object o;
+	point start,left,sp,p,p0,p1,p2,p3,p4,p5,p6,captors[],flatSpaces[];
+	float dir,dis,minDis;
+	
+	start = this.position;
+	left = leftPoint(aheadPoint(15));
+	dir = this.orientation;
+	
+	o = Radar(PowerCaptor);
+	turn(direction(o.position));
+	move(10);
+	go(o);
+	goGrab(PowerCell);
+	o = Radar(WingedOrgaShooter);
+	go(o);
+	drop();
+	goGrab(PowerCell);
+	go(PowerCaptor);
+	drop();
+	turn(90);
+	move(7);
+	go(left);
+	go(start);
+	turn(dir);
+	o = radar(PowerCaptor);
+	
+	sp = location(SpaceShip);
+	
+	p6 = flatspace(sp,5,178,180,4);
+	
+	flatSpaces = flatSpacesAroundCenter(p6,5,40,360);
+	minDis = 999999;
+	for (int i = 0; i < sizeof(flatSpaces); i++)
+	{
+		p = flatSpaces[i];
+		dis = distance2d(p,sp);
+		if (dis < minDis)
+		{
+			p5 = p;
+			minDis = dis;
+		}
+	}
+	
+	flatSpaces = flatSpacesAroundCenter(p5,5,40,360);
+	minDis = 999999;
+	for (int i = 0; i < sizeof(flatSpaces); i++)
+	{
+		p = flatSpaces[i];
+		dis = distance2d(p,sp);
+		if (dis < minDis)
+		{
+			p4 = p;
+			minDis = dis;
+		}
+	}
+	
+	flatSpaces = flatSpacesAroundCenter(p4,5,20,360);
+	minDis = 999999;
+	for (int i = 0; i < sizeof(flatSpaces); i++)
+	{
+		p = flatSpaces[i];
+		dis = distance2d(p,sp);
+		if (dis < minDis)
+		{
+			p3 = p;
+			minDis = dis;
+		}
+	}
+	
+	flatSpaces = flatSpacesAroundCenter(p4,5,40,360);
+	minDis = 999999;
+	for (int i = 0; i < sizeof(flatSpaces); i++)
+	{
+		p = flatSpaces[i];
+		dis = distance2d(p,sp);
+		if (dis < minDis)
+		
+		{
+			p2 = p;
+			minDis = dis;
+		}
+	}
+	
+	p1 = aheadPoint(radar(Me),52,-65);
+	p0 = aheadPoint(radar(Me),30,-100);
+	
+	captors[0] = p0;
+	captors[1] = p1;
+	captors[2] = p2;
+	captors[3] = p3;
+	captors[4] = p4;
+	captors[5] = p5;
+	captors[6] = p6;
+	
+	Message("Please start a program of WingedOrgaShooter bot to call Mission() function of this bot");
+	
+	while (search(com.ants,p0,0,80) != null)
+	{
+		wait(10);
+	}
+	
+	camerafocus(this);
+	com.maxBuild = sizeof(captors);
+	
+	p = captors[0];
+	
+	goGrab(Titanium);
+	move(-10);
+	go(p);
+	move(-3);
+	drop();
+	Build(PowerCaptor,location(Titanium));
+	go(left);
+	go(start);
+	turn(dir);
+	move(1.5);
+	
+	while (found(com.ants))
+	{
+		Message("Wait for WingedOrgaShooter to eliminate ants");
+		wait(10);
+	}
+	
+	for (int i = 1; i < sizeof(captors); i++)
+	{
+		p = captors[i];
+		goGrab(Titanium);
+		go(left);
+		go(p);
+		if (i == 1)
+		{
+			turn(direction(location(SpaceShip)));
+			drop(Behind);
+		}
+		else if (i == 2)
+		{
+			move(-2);
+			drop();
+		}
+		else if (i == 3)
+		{
+			turn(direction(location(SpaceShip)));
+			turn(45);
+			drop();
+		}
+		else if (i == 4)
+		{
+			turn(direction(location(SpaceShip)));
+			turn(135);
+			drop();
+		}
+		else
+		{
+			move(-2);
+			turn(-45);
+			drop();
+		}
+		Build(PowerCaptor,location(Titanium));
+		
+		if (this.energyCell.energyLevel < 0.5)
+		{
+			go(o);
+			switchCell();
+			turn(90);
+			move(7);
+		}
+		go(left);
+		go(start);
+		turn(dir);
+		move(1.5);
+		waitForAvailable(PowerCaptor,p);
+	}
+	
+	go(left);
+	goGrab(BlackBox);
+	go(left);
+	go(start);
+	takeoff();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	airGuard(radar(SpaceShip),60);
+}

@@ -1,0 +1,6 @@
+extern void object::Saari3()
+{
+	SatCom com();
+	
+	
+}

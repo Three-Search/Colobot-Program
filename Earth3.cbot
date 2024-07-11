@@ -1,0 +1,42 @@
+extern void object::Earth3()
+{
+	SatCom com();
+	
+	moveObjToObj(PowerCell,ResearchCenter);
+	
+	Message("Researching "+TrackedGrabber);
+	research(TrackedGrabber);
+	
+	go(BotFactory);
+	Build(TrackedGrabber,"Mission()");
+	
+	goGrab(PowerCell);
+	waitForAvailable(TrackedGrabber);
+	moveObjToObj(PowerCell,TrackedGrabber);
+	
+	go(SpaceShip);
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == TrackedGrabber)
+	{
+		GrabMission();
+	}
+}
+
+public void object::GrabMission()
+{
+	moveObjToObj(BlackBox,SpaceShip);
+	
+	while (!astronautOnShip())
+	{
+		wait(10);
+	}
+	
+	missionComplete();
+	takeoff();
+}

@@ -1,0 +1,148 @@
+extern void object::Volcano2()
+{
+	SatCom com();
+	object shooter;
+	
+	waitForAvailable(Converter);
+	
+	Build(RepairCenter);
+	
+	Build(DefenseTower);
+	goGrab(PowerCell);
+	waitForAvailable(DefenseTower,com.buildPoint);
+	moveObjToObj(PowerCell,DefenseTower);
+	
+	Build(BotFactory);
+	Build(WingedShooter,"Mission()");
+	moveObjToObj(PowerCell,WingedShooter);
+	
+	Build(PowerPlant);
+	Build(AutoLab);
+	
+	go(TitaniumOre);
+	while (found(com.ants))
+	{
+		shooter = radar(WingedShooter);
+		if (shooter == null)
+		{
+			moveObjToObj(TitaniumOre,Converter);
+			waitForAvailable(Titanium,location(Converter));
+			moveObjToObj(Titanium,PowerPlant);
+			
+			Build(WingedShooter,"Mission()");
+			go(PowerPlant);
+			grab();
+			moveObjToObj(PowerCell,WingedShooter);
+			go(TitaniumOre);
+		}
+		else
+		{
+			wait(5);
+		}
+	}
+	
+	moveObjToObj(TitaniumOre,Converter);
+	waitForAvailable(Titanium);
+	moveObjToObj(Titanium,PowerPlant);
+	
+	Build(WingedGrabber,"Mission()");
+	go(PowerPlant);
+	grab();
+	moveObjToObj(PowerCell,WingedGrabber);
+	
+	moveObjToObj(TitaniumOre,Converter);
+	waitForAvailable(Titanium);
+	moveObjToObj(Titanium,PowerPlant);
+	
+	Build(LeggedGrabber,"Mission()");
+	go(PowerPlant);
+	grab();
+	moveObjToObj(PowerCell,LeggedGrabber);
+	
+	go(SpaceShip);
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == WheeledGrabber)
+	{
+		GrabMission();
+	}
+	else if (category == WingedShooter)
+	{
+		ShootMission();
+	}
+	else if (category == WingedGrabber)
+	{
+		OrganicMatterMission();
+	}
+	else
+	{
+		go(SpaceShip);
+		missionComplete();
+		takeoff();
+	}
+}
+
+public void object::OrganicMatterMission()
+{
+	moveObjToObj(OrgaMatter,AutoLab);
+	research(ResearchLegged,radar(AutoLab));
+	missionComplete();
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	/*
+	com.safeAnt = 50;
+	com.safeRoot = 25;
+	com.safeTopo = 3;
+	com.safeFlatGround = 1.5;
+	com.temperatureThreshold = 0.40;
+	com.energyThreshold = 0.40;
+	com.shieldThreshold = 0.70;
+	com.attackRange = 50;
+	com.checkLOS = false;
+	com.minAimAngle = -19;
+	com.maxAimAngle = -5;
+	com.plantFlag = false;
+	*/
+	
+	com.safeTopo = 2;
+	com.safeFlatGround = 2;
+	com.temperatureThreshold = 0.70;
+	com.energyThreshold = 0.50;
+	com.shieldThreshold = 0.70;
+	com.checkLOS = false;
+	
+	attack();
+	go(space(location(SpaceShip),30,60,4));
+}
+
+public void object::GrabMission()
+{
+	point p1,p2,p3;
+	
+	p1 = flatSpace();
+	p2 = flatSpace();
+	p3 = flatSpace();
+	
+	Build(DefenseTower);
+	goGrab(Titanium);
+	moveObjToPlace(Titanium,p2);
+	Build(DefenseTower,location(Titanium));
+	moveObjToObj(PowerCell,DefenseTower);
+	goGrab(Titanium);
+	moveObjToPlace(Titanium,p3);
+	Build(PowerStation,location(Titanium));
+	moveObjToObj(PowerCell,DefenseTower);
+	waitForAvailable(PowerStation);
+	Build(Converter);
+	
+	serviceTowers();
+}

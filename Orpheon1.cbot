@@ -1,0 +1,127 @@
+extern void object::Orpheon1()
+{
+	SatCom com();
+	
+	object o;
+	point start,p,q,r,c1,c2,c3,flatSpaces[];
+	float dis,minDis;
+	
+	start = position;
+	r = aheadPoint(com.me,105,-25);
+	q = aheadPoint(com.me,10,-90);
+	c1 = aheadPoint(radar(BlueFlag),30,200);
+	
+	flatSpaces = flatSpacesAroundCenter(c1,5,40,36);
+	
+	minDis = 999999;
+	for (int i = 0; i < sizeof(flatSpaces); i++)
+	{
+		p = flatSpaces[i];
+		dis = distance2d(p,com.spaceShip.position);
+		if (dis < minDis)
+		{
+			c2 = p;
+			minDis = dis;
+		}
+	}
+	
+	flatSpaces = flatSpacesAroundCenter(c2,5,40,36);
+	
+	minDis = 999999;
+	for (int i = 0; i < sizeof(flatSpaces); i++)
+	{
+		p = flatSpaces[i];
+		dis = distance2d(p,com.spaceShip.position);
+		if (dis < minDis)
+		{
+			c3 = p;
+			minDis = dis;
+		}
+	}
+	
+	goGrab(Titanium);
+	turn(180+direction(location(SpaceShip)));
+	move(5);
+	moveObjToPlace(Titanium,c1);
+	Build(PowerCaptor,location(Titanium));
+	go(q);
+	go(start);
+	goGrab(Titanium);
+	turn(180+direction(location(SpaceShip)));
+	move(5);
+	moveObjToPlace(Titanium,location(BlueFlag));
+	Build(Derrick,location(Titanium));
+	goGrab(PowerCell);
+	moveObjToObj(PowerCell,PowerCaptor);
+	go(q);
+	go(start);
+	goGrab(Titanium);
+	move(-5);
+	p = aheadPoint(radar(Derrick),20,0);
+	go(p);
+	drop();
+	Build(Converter,location(Titanium));
+	chargeCell();
+	go(q);
+	go(start);
+	goGrab(PowerCell);
+	move(-10);
+	moveObjToObj(PowerCell,PowerCaptor);
+	go(q);
+	go(start);
+	goGrab(PowerCell);
+	move(-10);
+	moveObjToObj(PowerCell,PowerCaptor);
+	moveObjToObj(TitaniumOre,Converter);
+	waitForAvailable(Titanium);
+	p = aheadPoint(radar(BlueFlag),30,160);
+	moveObjToPlace(Titanium,p);
+	Build(BotFactory,location(Titanium));
+	Build(WingedOrgaShooter,"Mission()");
+	o = radar(PowerCaptor);
+	go(o);
+	turn(direction(location(PowerCell)));
+	grab();
+	move(10);
+	moveObjToObj(PowerCell,WingedOrgaShooter);
+	p = aheadPoint(radar(Derrick),20,180);
+	moveObjToPlace(Titanium,p);
+	Build(RadarStation,location(Titanium));
+	go(Derrick);
+	move(-3);
+	waitForAvailable(RadarStation);
+	while (found(com.ants))
+	{
+		if (!found(WingedOrgaShooter))
+		{
+			camerafocus(this);
+			Build(WingedOrgaShooter,"Mission()");
+			go(PowerCaptor);
+			if (search(PowerCell,0,360,0,6) != null)
+			{
+				turn(direction(location(PowerCell)));
+				grab();
+				move(10);
+			}
+			moveObjToObj(PowerCell,WingedOrgaShooter);
+			go(Derrick);
+			move(-3);
+		}
+		Message("Wait for WingedOrgaShooter to eliminate ants");
+		wait(10);
+	}
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	ShootMission();
+}
+
+public void object::ShootMission()
+{
+	checkEnergyCell();
+	attack();
+	missionComplete();
+}

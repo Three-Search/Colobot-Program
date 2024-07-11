@@ -1,0 +1,134 @@
+extern void object::Centuary1()
+{
+	SatCom com();
+	object o;
+	point p;
+	
+	o = radar(NuclearCell);
+	p = freePoint(o.position);
+	fly(p);
+	goGrab(NuclearCell);
+	o = radar(LeggedGrabber);
+	p = behindPoint(o,5);
+	go(p);
+	turn(direction(o.position));
+	move(3);
+	drop(Behind);
+	grab();
+	turn(-90);
+	drop();
+	turn(90);
+	grab(Behind);
+	drop();
+	
+	turn(60);
+	jet(1);
+	wait(3);
+	motor(1,1);
+	wait(3);
+	jet(-1);
+	wait(3);
+	motor(0,0);
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == LeggedShooter)
+	{
+		ShootMission();
+	}
+	else if (category == Recycler)
+	{
+		RecycleMission();
+	}
+	else if (category == LeggedGrabber)
+	{
+		GrabMission();
+	}
+	else if (category == LeggedOrgaShooter)
+	{
+		go(SpaceShip);
+		missionComplete();
+		takeoff();
+	}
+}
+
+public void object::GrabMission()
+{
+	SatCom com();
+	
+	com.plantFlag = false;
+	
+	while (!found(Titanium))
+	{
+		wait(5);
+	}
+	
+	Build(Converter);
+	Build(BotFactory);
+	Build(LeggedShooter,"Mission()");
+	flatSpace();
+	Build(NuclearPlant);
+	goGrab(UraniumOre);
+	waitForAvailable(NuclearPlant);
+	moveObjToObj(UraniumOre,NuclearPlant);
+	Build(RepairCenter);
+	waitForAvailable(NuclearCell);
+	waitForAvailable(LeggedShooter,location(BotFactory));
+	moveObjToObj(NuclearCell,LeggedShooter);
+	Build(AutoLab);
+	
+	go(SpaceShip);
+	while (radar(AlienAnt) != null)
+	{
+		if (radar(LeggedShooter) == null)
+		{
+			camerafocus(this);
+			Build(LeggedShooter,"Mission()");
+			moveObjToObj(UraniumOre,NuclearPlant);
+			waitForAvailable(NuclearCell);
+			waitForAvailable(LeggedShooter,location(BotFactory));
+			moveObjToObj(NuclearCell,LeggedShooter);
+			go(SpaceShip);
+		}
+		message(category+": Wait for LeggedShooter to eliminate ants");
+		wait(10);
+	}
+	
+	waitForAvailable(OrgaMatter);
+	camerafocus(this);
+	moveObjToObj(OrgaMatter,AutoLab);
+	research(ResearchOrgaShooter,radar(AutoLab));
+	Build(LeggedOrgaShooter,"Mission()");
+	waitForAvailable(LeggedOrgaShooter);
+	moveObjToObj(PowerCell,LeggedOrgaShooter);
+	go(SpaceShip);
+	missionComplete();
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	com.shieldThreshold = 0.8;
+	attack();
+	if (distance2d(position,location(SpaceShip)) < 20)
+	{
+		go(space(location(SpaceShip),25,35,8));
+	}
+}
+
+public void object::RecycleMission()
+{
+	go(Wreck);
+	recycle();
+	turn(180);
+	move(7);
+	go(Wreck);
+	recycle();
+	go(space(position,10,20,4));
+	missionComplete();
+}

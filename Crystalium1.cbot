@@ -1,0 +1,104 @@
+extern void object::Crystalium1()
+{
+	SatCom com();
+	
+	Build(Converter);
+	Build(BotFactory);
+	Build(WingedShooter,"Mission()");
+	moveObjToObj(TitaniumOre,Converter);
+	moveObjToObj(PowerCell,WingedShooter);
+	Build(ResearchCenter);
+	goGrab(PowerCell);
+	waitForAvailable(ResearchCenter);
+	moveObjToObj(PowerCell,ResearchCenter);
+	research(ResearchDefenseTower);
+	
+	go(SpaceShip);
+	go(PowerCell);
+	switchCell();
+	grab();
+	
+	go(TitaniumOre);
+	drop(Behind);
+	grab();
+	moveObjToObj(TitaniumOre,Converter);
+	waitForAvailable(Titanium);
+	
+	Build(WingedGrabber,"Mission()");
+	
+	moveObjToObj(TitaniumOre,Converter);
+	moveObjToObj(PowerCell,WingedGrabber);
+	
+	go(SpaceShip);
+	waitForAvailable(RadarStation);
+	Build(ExchangePost);
+	
+	go(SpaceShip);
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == WingedGrabber)
+	{
+		GrabMission();
+	}
+	else
+	{
+		ShootMission();
+	}
+}
+
+public void object::GrabMission()
+{
+	object o,item;
+	point[] points;
+	point p,r;
+	float z = -1;
+	int j;
+	
+	o = radar(SpaceShip);
+	points = flatSpacesAroundCenter(o.position,flatRequire(RadarStation)/2,153.42,360);
+	
+	j = 0;
+	for(int i = 0; i < sizeof(points);i++)
+	{
+		p = points[i];
+		if (topo(p) > z)
+		{
+			z = topo(p);
+			j = i;
+		}
+	}
+	
+	r = points[j];
+	plantFlag(r,BlueFlag);
+	
+	moveObjToPlace(Titanium,r);
+	Build(RadarStation,location(Titanium));
+	go(space(position,15,30,1));
+	missionComplete();
+	camerafocus(radar(WheeledGrabber));
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	com.safeTopo = 1;
+	com.safeFlatGround = 0;
+	com.temperatureThreshold = 0.75;
+	com.energyThreshold = 0.25;
+	com.shieldThreshold = 0.70;
+	
+	while (Radar(AlienWorm) != null)
+	{
+		attack();
+		landAndRest(position);
+		wait(10);
+	}
+	missionComplete();
+}

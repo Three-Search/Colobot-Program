@@ -1,0 +1,56 @@
+extern void object::Volcano1()
+{
+	SatCom com();
+	
+	moveObjToObj(PowerCell,ResearchCenter);
+	research(ResearchNuclearPlant);
+	moveObjToObj(TitaniumOre,Converter);
+	waitForAvailable(Titanium);
+	waitForResearch(ResearchNuclearPlant);
+	Build(NuclearPlant);
+	goGrab(UraniumOre);
+	waitForAvailable(NuclearPlant);
+	moveObjToObj(UraniumOre,NuclearPlant);
+	Build(TrackedShooter,"Mission()");
+	waitForAvailable(TrackedShooter);
+	moveObjToObj(PowerCell,TrackedShooter);
+	Build(TrackedGrabber,"Mission()");
+	waitForAvailable(TrackedGrabber);
+	moveObjToObj(NuclearCell,TrackedGrabber);
+	go(SpaceShip);
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == TrackedShooter)
+	{
+		ShootMission();
+	}
+	else
+	{
+		GrabMission();
+	}
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	object o,tnt,target;
+	float d,dis,dif,ang;
+	
+	o = radar(TNT);
+	go(mid(position,o.position));
+	go(mid(position,o.position));
+	attack();
+}
+
+public void object::GrabMission()
+{
+	moveObjToObj(TNT,SpaceShip);
+	missionComplete();
+	takeoff();
+}

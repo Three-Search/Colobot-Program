@@ -1,0 +1,75 @@
+extern void object::Centuary4()
+{
+	SatCom com();
+	
+	object o;
+	point start,p,p1,p2;
+	
+	start = position;
+	
+	move(-5);
+	o = radar(Titanium);
+	p = aheadPoint(o,6,220);
+	go(p);
+	turn(direction(o.position));
+	move(4);
+	
+	Build(Converter);
+	go(TitaniumOre);
+	waitForAvailable(Converter);
+	//p1 = flatSpace();
+	Build(ResearchCenter);
+	//p2 = flatSpace();
+	Build(BotFactory);
+	moveObjToObj(PowerCell,ResearchCenter);
+	research(ResearchThumper);
+	moveObjToObj(TitaniumOre,Converter);
+	waitForAvailable(Titanium);
+	waitForResearch(ResearchThumper);
+	Build(Thumper,"Mission()");
+	go(SpaceShip);
+	go(location(PowerCell));
+	switchCell();
+	grab();
+	turn(180+direction(location(SpaceShip)));
+	move(5);
+	go(space(position,30,40,4));
+	drop();
+	go(SpaceShip);
+	go(location(PowerCell));
+	grab();
+	turn(180+direction(location(SpaceShip)));
+	move(5);
+	moveObjToObj(PowerCell,Thumper);
+	com.bools[0] = false;
+	go(SpaceShip);
+	while (!com.bools[0])
+	{
+		wait(1);
+	}
+	moveObjToObj(BlackBox,SpaceShip);
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	SatCom com();
+	point p;
+	
+	checkEnergyCell();
+	move(-7);
+	turn(90);
+	move(10);
+	
+	p = location(AlienAnt);
+	
+	while (distance2d(position,p) > com.safeAnt)
+	{
+		crawl(p);
+	}
+	motor(0,0);
+	thump();
+	com.bools[0] = true;
+	go(SpaceShip);
+	missionComplete();
+}

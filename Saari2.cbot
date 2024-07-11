@@ -1,0 +1,88 @@
+extern void object::Saari2()
+{
+	SatCom com();
+	
+	object o;
+	point p = position;
+	point q;
+	point bf;
+	
+	Build(DefenseTower);
+	
+	bf = flatSpace();
+	
+	goGrab(Titanium,10);
+	moveObjToPlace(Titanium,flatSpace());
+	Build(DefenseTower,location(Titanium));
+	
+	moveObjToObj(PowerCell,DefenseTower);
+	moveObjToObj(PowerCell,DefenseTower);
+	
+	go(p);
+	while (radar(com.ants,0,360,0,100) != null)
+	{
+		wait(1);
+	}
+	
+	moveObjToPlace(Titanium,bf);
+	Build(BotFactory,location(Titanium));
+	
+	point s = location(SpaceShip);
+	q.x = s.x - 3.5;
+	q.y = s.y - 3;
+	q.z = topo(q);
+	
+	go(q);
+	Build(WingedShooter,"Mission()");
+	
+	go(q);
+	Build(Converter);
+	
+	go(q);
+	waitForAvailable(Converter);
+	Build(PowerStation);
+	
+	go(p);
+	goGrab(PowerCell);
+	waitForAvailable(PowerStation);
+	chargeCell();
+	moveObjToObj(PowerCell,WingedShooter);
+	
+	Build(RepairCenter);
+	
+	Build(WingedShooter,"Mission()");
+	go(p);
+	goGrab(PowerCell);
+	chargeCell();
+	moveObjToObj(PowerCell,WingedShooter);
+	
+	go(p);
+	while (found(com.ants))
+	{
+		wait(10);
+	}
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == WingedShooter)
+	{
+		ShootMission();
+	}
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	com.safeTopo = 0;
+	com.safeFlatGround = 0;
+	
+	attack();
+	landAndRest(position);
+	missionComplete();
+}

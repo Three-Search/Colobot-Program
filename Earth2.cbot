@@ -1,0 +1,15 @@
+/*
+1) Position yourself close to the first titanium cube.
+2) Build a research center. Note that only you can accomplish the task of building; no bot can be substituted.
+3) With a second titanium cube, build a bot factory.
+*/
+
+extern void object::Earth2()
+{
+	SatCom com();
+	
+	Build(ResearchCenter,location(Titanium));
+	waitForAvailable(com.buildCategory);
+	
+	Build(BotFactory,location(Titanium));
+}
