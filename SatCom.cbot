@@ -1,0 +1,4285 @@
+/*
+11 July 2024
+
+ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova
+
+Usage:
+
+1. Copy and paste following files from https://github.com/Three-Search/Colobot-Program to the Colobot\data\ai folder
+SatCom.cbot
+Grabber.cbot
+Shooter.cbot
+Builder.cbot
+
+2. Load  the SatCom.cbot library program for each mission by editing the scene.txt file in the Colobot\data\levels\missions\chapterXXX\levelXXX folder and add script1="SatCom.cbot" to object Me under BeginObject section.
+
+For example, the scene.txt file for chapter003\level003 with title "On the Offensive" will look like the example below after adding script1="SatCom.cbot" to object Me under BeginObject section:
+
+BeginObject
+CreateObject pos= 0.00; 0.00 dir=0.0 type=SpaceShip run=1
+CreateObject pos= 0.00;-3.25 dir=1.5 type=Me script1="SatCom.cbot"
+
+3. In the bot Program Editor, declare an instance of the SatCom class, and you can call any function in the SatCom.cbot library program,. For example:
+extern void object::Tropica3()
+{
+	SatCom com();
+	
+	Message("Please start a program of Winged Grabber bot to call Mission() function of this bot");
+	waitForAvailable(RepairCenter);
+	
+	Build(ResearchCenter);
+	Build(BotFactory);
+	Build(WingedShooter,"Mission()");
+	
+	go(SpaceShip);
+	missionComplete();
+	camerafocus(radar(WingedGrabber));
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == WingedGrabber)
+	{
+		GrabMission();
+	}
+	else
+	{
+		ShootMission();
+	}
+}
+
+*/
+
+extern void object::houston()
+{
+	SatCom com();
+}
+
+public class Queue
+{
+	object[] items;
+	int front;
+	int rear;
+	int length;
+	bool isLocked;
+	
+	// Constructor to initialize the queue
+	public void Queue(int size)
+	{
+		for (int i = 0; i < size; i++)
+		{
+			items[i] = null;
+		}
+		front = 0;
+		rear = 0;
+		length = size;
+		isLocked = false;
+	}
+	
+	// Method to acquire the lock
+	void lock()
+	{
+		while (isLocked)
+		{
+			// Wait until the lock is released
+			wait(2);
+		}
+		isLocked = true;
+	}
+	
+	// Method to release the lock
+	void unlock()
+	{
+		isLocked = false;
+	}
+	
+	// Method to add an item to the queue
+	void enqueue(object item)
+	{
+		lock();
+		if ((rear + 1) % length == front)
+		{
+			Message("Queue is full. Could not add object into queue");
+			unlock();
+			return;
+		}
+		items[rear] = item;
+		rear = (rear + 1) % length;
+		unlock();
+	}
+	
+	// Method to remove an item from the queue
+	object dequeue()
+	{
+		lock();
+		if (isEmpty())
+		{
+			Message("Queue is empty. Could not remove front object from queue");
+			unlock();
+			return null;
+		}
+		object item = items[front];
+		front = (front + 1) % length;
+		unlock();
+		return item;
+	}
+	
+	// Method to check if the queue is empty
+	bool isEmpty()
+	{
+		return front == rear;
+	}
+	
+	// Method to peek at the front item of the queue without removing it
+	object peek()
+	{
+		removeNulls(); // Clean up nulls before peeking
+		if (isEmpty())
+		{
+			Message("Queue is empty. Could not peak at the front object");
+			return null;
+		}
+		return items[front];
+	}
+	
+	// Method to remove nulls from the entire queue
+	void removeNulls()
+	{
+		lock();
+		int newFront = front;
+		while (newFront != rear)
+		{
+			if (items[newFront] == null)
+			{
+				// Shift all items after the null one step forward
+				int i = newFront;
+				while (i != rear)
+				{
+					items[i] = items[(i + 1) % length];
+					i = (i + 1) % length;
+				}
+				rear = (rear - 1 + length) % length;
+			}
+			else
+			{
+				newFront = (newFront + 1) % length;
+			}
+		}
+		unlock();
+	}
+}
+
+public class SatCom
+{
+	static bool staticInited = false;
+	
+	static int returnCode;
+	static string returnMessage;
+	static object returnObject;
+	static point returnPoint;
+	
+	static point[] pointsAroundShip;
+	static int nextPoint = 0;
+	static point buildPoint;
+	static int buildCategory;
+	static int maxBuild = 0;
+	static bool builderInUsed = false;
+	static Queue chargeQueue;
+	static Queue repairQueue;
+	
+	static float FLYING_RANGE = 1500;
+	static float DRIVING_RANGE = 100;
+	static int[] ALL_BOTS;
+	static int[] ALL_SHOOTERS;
+	static int[] ALL_ALIENS;
+	static int[] ALL_BUILDINGS;
+	static int[] ALL_RESOURCES;
+	static float[] RADII;
+	static string[] CATEGORY_NAMES;
+	
+	static int[] obstacles;
+	static int[] quartz;
+	static int[] ants;
+	static int[] roots;
+	static int[] enemies;
+	static bool detectedGraviPlant = false;
+	static bool detectedAnt = false;
+	static bool detectedSpider = false;
+	static bool detectedWorm = false;
+	static bool detectedEgg = false;
+	static bool detectedWasp = false;
+	static float safeAnt = 55;
+	static float safeRoot = 30;
+	static float safeTopo = 1.5;
+	static float safeFlatGround = 0;
+	static float temperatureThreshold = 0.7;
+	static float energyThreshold = 0.4;
+	static float shieldThreshold = 0.7;
+	static float attackRange = 45;
+	static bool checkLOS = true;
+	static bool plantFlag = false;
+	static float minAimAngle = -19;
+	static float maxAimAngle = -5;
+	
+	static object me;
+	static object spaceShip;
+	static object botFactory;
+	static object researchCenter;
+	static object repairCenter;
+	static object radarStation;
+	static object exchangePost;
+	static object defenseTower;
+	static object autoLab;
+	static object powerStation;
+	static object powerPlant;
+	static object nuclearPlant;
+	static object converter;
+	static object powerCaptor;
+	static object[] items;
+	static point[] points;
+	static string[] strings;
+	static bool[] bools;
+	static float[] floats;
+	static int[] ints;
+	
+	public void SatCom()
+	{
+		if (staticInited)
+		{
+			return;
+		}
+		
+		staticInited = true;
+		
+		if (radar(GraviPlant) != null)
+		{
+			detectedGraviPlant = true;
+		}
+		if (radar(AlienAnt) != null)
+		{
+			detectedAnt = true;
+		}
+		if (radar(AlienSpider) != null)
+		{
+			detectedSpider = true;
+		}
+		if (Radar(AlienWorm) != null)
+		{
+			detectedWorm = true;
+		}
+		if (radar(AlienEgg) != null)
+		{
+			detectedEgg = true;
+		}
+		
+		chargeQueue = new Queue(11);
+		repairQueue = new Queue(11);
+		
+		me = radar(Me);
+		spaceShip = radar(SpaceShip);
+		botFactory = radar(BotFactory);
+		researchCenter = radar(ResearchCenter);
+		repairCenter = radar(RepairCenter);
+		radarStation = radar(RadarStation);
+		exchangePost = radar(ExchangePost);
+		defenseTower = radar(DefenseTower);
+		autoLab = radar(AutoLab);
+		powerStation = radar(PowerStation);
+		powerPlant = radar(PowerPlant);
+		nuclearPlant = radar(NuclearPlant);
+		converter = radar(Converter);
+		powerCaptor = radar(PowerCaptor);
+		
+		maxBuild = maxCanBuild();
+		initFlatSpacesAroundShip(3.8,25,24);
+		
+		int nr;
+		
+		nr = 0;
+		// trees
+		for (int i = 70; i < 96; i++)
+		{
+			obstacles[nr++] = i;
+		}
+		
+		// Ruin
+		for (int i = 600; i < 613; i++)
+		{
+			obstacles[nr++] = i;
+		}
+		
+		nr = 0;
+		for (int i = 700; i < 704; i++)
+		{
+			quartz[nr++] = i;
+		}
+		
+		nr = 0;
+		ants[nr++] = AlienAnt;
+		ants[nr++] = AlienSpider;
+		ants[nr++] = AlienWorm;
+		ants[nr++] = AlienEgg;
+		//ants[nr++] = AlienWasp;
+		
+		nr = 0;
+		// Ruin
+		for (int i = 600; i < 613; i++)
+		{
+			roots[nr++] = i;
+		}
+		
+		// Root trees
+		for (int i = 710; i < 715; i++)
+		{
+			roots[nr++] = i;
+		}
+		
+		nr = 0;
+		enemies[nr++] = AlienAnt;
+		enemies[nr++] = AlienSpider;
+		enemies[nr++] = AlienWorm;
+		enemies[nr++] = AlienEgg;
+		enemies[nr++] = AlienWasp;
+		
+		for (int i = 710; i < 716; i++)
+		{
+			enemies[nr++] = i;
+		}
+		
+		int[] a0 = 
+		{
+			WheeledGrabber,
+			TrackedGrabber,
+			WingedGrabber,
+			LeggedGrabber,
+			WheeledShooter,
+			TrackedShooter,
+			WingedShooter,
+			LeggedShooter,
+			WheeledOrgaShooter,
+			TrackedOrgaShooter,
+			WingedOrgaShooter,
+			LeggedOrgaShooter,
+			WheeledSniffer,
+			TrackedSniffer,
+			WingedSniffer,
+			LeggedSniffer,
+			Thumper,
+			PhazerShooter,
+			Recycler,
+			Shielder,
+			Subber
+		};
+		ALL_BOTS = a0;
+		
+		int[] a1 = 
+		{
+			WheeledShooter,
+			TrackedShooter,
+			WingedShooter,
+			LeggedShooter,
+			WheeledOrgaShooter,
+			TrackedOrgaShooter,
+			WingedOrgaShooter,
+			LeggedOrgaShooter,
+			PhazerShooter
+		};
+		ALL_SHOOTERS = a1;
+		
+		int[] a2 =
+		{
+			AlienQueen,
+			AlienAnt,
+			AlienSpider,
+			AlienWasp,
+			AlienWorm
+		};
+		ALL_ALIENS = a2;
+		
+		int[] a3 =
+		{
+			Houston,
+			SpaceShip,
+			BotFactory,
+			ResearchCenter,
+			RadarStation,
+			ExchangePost,
+			RepairCenter,
+			DefenseTower,
+			AutoLab,
+			PowerStation,
+			PowerPlant,
+			NuclearPlant,
+			Converter,
+			Derrick,
+			PowerCaptor,
+			Vault
+		};
+		ALL_BUILDINGS = a3;
+		
+		int[] a4 =
+		{
+			TitaniumOre,
+			UraniumOre,
+			Titanium,
+			PowerCell,
+			NuclearCell
+		};
+		ALL_RESOURCES = a4;
+		
+		RADII[2] = 32.25; //Gantry Crane
+		RADII[3] = 02.00; //Space Ship; Bottom Width of 20.00, Top Width of 8.25
+		RADII[4] = 03.00; //Derrick
+		RADII[5] = 06.00; //Bot Factory
+		RADII[6] = 06.00; //Power Station
+		RADII[7] = 05.00; //Ore Converter
+		RADII[8] = 05.25; //Repair Center
+		RADII[9] = 02.75; //Defense Tower
+		RADII[10] = 00.00; //Alien Nest; Organic Material/hatchery?, however it is probably holding Orga mater
+		RADII[11] = 03.75; //Research Center
+		RADII[12] = 02.75; //Radar Station
+		RADII[13] = 04.00; //Power Plant; Power Cell Factory
+		RADII[14] = 05.25; //Auto Lab
+		RADII[15] = 07.00; //Nuclear Power Station
+		RADII[16] = 00.00; //Start Area; platform
+		RADII[17] = 00.00; //Goal Area;  platform
+		RADII[18] = 02.75; //Information exchange post
+		RADII[19] = 06.50; //Power Captor
+		RADII[20] = 07.75; //Target "the target stand" (+)==<  looking thing; 03.25 at bace
+		RADII[21] = 00.00; //Target2 "the actual Brass + Target"
+		RADII[22] = 04.50; //Vault
+		RADII[23] = 18.75; //Huston Mission Control
+		
+		RADII[31] = 01.50; //Titanium Ore
+		RADII[32] = 01.50; //Uranium Ore
+		RADII[33] = 01.50; //Titanium
+		RADII[34] = 01.75; //Power Cell
+		RADII[35] = 01.50; //Nuclear Power Cell
+		RADII[36] = 01.50; //Orga Mater
+		RADII[37] = 01.50; //Black Box
+		RADII[38] = 01.50; //TNT Brick
+		
+		RADII[50] = 00.00; //green cross   -> energy deposit.
+		RADII[51] = 00.00; //red cross     -> titanium ore.
+		RADII[52] = 00.00; //yellow circle -> uranium ore.
+		
+		RADII[60] = 02.00; //Mine
+		RADII[61] = 01.75; //Firework
+		RADII[63] = 02.00; //Rocket Back Pack
+		
+		RADII[70] = 02.00; //Plant; Earth, Tropica, Centaury
+		RADII[71] = 02.00; //Plant; Earth, Tropica, Centaury
+		RADII[72] = 02.00; //Plant; Earth, Tropica, Centaury
+		RADII[73] = 02.00; //Plant; Earth, Tropica, Centaury
+		RADII[74] = 02.00; //Plant; Earth, Tropica, Centaury
+		RADII[75] = 00.00; //Small Plant; Tropica
+		RADII[76] = 00.00; //Small Plant; Tropica
+		RADII[77] = 00.00; //Small Plant; Tropica
+		
+		// RADII[80] = 02.75; //Large Plant; Tropica
+		// RADII[81] = 02.50; //Large Plant; Tropica
+		// RADII[82] = 02.50; //Large Plant; Tropica
+		// RADII[83] = 03.00; //Large Plant; Tropica
+		// RADII[84] = 02.50; //Large Plant; Tropica
+		
+		RADII[80] = 0; //Large Plant; Tropica
+		RADII[81] = 0; //Large Plant; Tropica
+		RADII[82] = 0; //Large Plant; Tropica
+		RADII[83] = 0; //Large Plant; Tropica
+		RADII[84] = 0; //Large Plant; Tropica
+		
+		RADII[85] = 01.75; //Plant; Volcano
+		RADII[86] = 01.75; //Plant; Volcano
+		RADII[87] = 01.75; //Plant, Tall; Volcano
+		RADII[88] = 01.75; //Plant; Volcano
+		RADII[89] = 01.75; //Plant; Volcano
+		RADII[90] = 01.75; //Tree; Earth
+		RADII[91] = 02.50; //Tree; Earth
+		RADII[92] = 02.75; //Tree; Earth
+		RADII[93] = 03.75; //Tree; Earth
+		
+		RADII[100] = 02.50; //Practice Bot
+		
+		RADII[110] = 02.50; //Wheeled Grabber
+		RADII[111] = 02.50; //Tracked Grabber
+		RADII[112] = 02.50; //Winged Grabber
+		RADII[113] = 02.50; //Legged Grabber
+		
+		RADII[120] = 02.50; //Wheeled Shooter
+		RADII[121] = 02.50; //Tracked Shooter
+		RADII[122] = 02.50; //Winged Shooter
+		RADII[123] = 02.50; //Legged Shooter
+		
+		RADII[130] = 02.50; //Wheeled Orga Shooter
+		RADII[131] = 02.50; //Tracked Orga Shooter
+		RADII[132] = 02.50; //Winged Orga Shooter
+		RADII[133] = 02.50; //Legged Orga Shooter
+		
+		RADII[140] = 02.50; //Wheeled Sniffer
+		RADII[141] = 02.50; //Tracked Sniffer
+		RADII[142] = 02.50; //Winged Sniffer
+		RADII[143] = 02.50; //Legged Sniffer
+		
+		RADII[200] = 03.00; //Thumper
+		RADII[201] = 03.00; //Phazer Shooter35
+		RADII[202] = 03.00; //Recycler
+		RADII[203] = 03.00; //Shielder; Height 3.00 when not active
+		RADII[210] = 02.50; //Subber
+		RADII[211] = 02.50; //Target Bot
+		RADII[250] = 00.00; //Way Point
+		
+		RADII[260] = 00.00; //Blue Flag
+		RADII[261] = 00.00; //Red Flag
+		RADII[262] = 00.00; //Green Flag
+		RADII[263] = 00.00; //Yellow Flag
+		RADII[264] = 00.00; //Purple Flag
+		RADII[270] = 01.50; //KeyA - Blue
+		RADII[271] = 01.50; //KeyB - Red
+		RADII[272] = 01.50; //KeyC - Green
+		RADII[273] = 01.50; //KeyD - Yellow
+		
+		RADII[300] = 01.75; //Me
+		RADII[302] = 01.75; //Tech (looks a lot like "Me" in some levels)
+		RADII[400] = 02.25; //Barrier-Short; 1.5 width (about radi-of bot)
+		RADII[401] = 03.50; //Barrier-Long; 1.5 width (about radi-of bot)
+		
+		RADII[500] = 06.25; //Alien Queen
+		RADII[501] = 02.25; //Alien Egg
+		RADII[502] = 02.25; //Alien Ant
+		RADII[503] = 02.00; //Alien Spider
+		RADII[504] = 02.25; //Alien Wasp
+		RADII[505] = 00.00; //Alien Worm
+		
+		RADII[600] = 03.00; //A Wreckage wild card! for Recyclables
+		RADII[600] = 02.00; //Wreckage; Whelled Grabber, Recyclable
+		RADII[601] = 02.00; //Wreckage; Sunken Whelled Grabber, Recyclable
+		RADII[602] = 03.00; //Wreckage; Tracked Shooter, Recyclable
+		RADII[603] = 03.00; //Wreckage; Sunken Tracked Shooter, Recyclable
+		RADII[603] = 02.50; //Wreckage; Sunken Recyceler, Recyclable
+		RADII[605] = 02.50; //Wreckage; Recyceler, Recyclable
+		
+		RADII[606] = 06.00; //Ruin; Bot Factory
+		RADII[607] = 02.25; //Ruin; Ore Converter Door
+		RADII[608] = 02.00; //Ruin; Support, C shaped hunk of mettel
+		RADII[609] = 02.25; //Ruin; Brick like, Radar Station Base
+		RADII[610] = 05.00; //Ruin; Ore Converter
+		RADII[611] = 13.25; //Ruin; Space Ship Bace
+		RADII[612] = 08.50; //Ruin; Space Ship Top
+		
+		RADII[700] = 02.00; //Crystal; Crystalium
+		RADII[701] = 02.50; //Crystal; Crystalium
+		RADII[702] = 02.75; //Crystal; Crystalium
+		RADII[703] = 04.50; //Crystal; Crystalium
+		
+		RADII[710] = 04.25; //Green Mega Stalk; Stranve Plant, Small
+		RADII[711] = 03.50; //Green Mega Stalk; Stranve Plant, Small
+		RADII[712] = 03.25; //Green Mega Stalk; Stranve Plant, Small
+		RADII[713] = 05.25; //Green Mega Stalk; Stranve Plant, Med
+		RADII[714] = 07.25; //Green Mega Stalk; Stranve Plant, Large
+		RADII[715] = 07.25; //Green Mega Stalk; Stranve Plant, Large with Green Shield like apperatice
+		RADII[715] = 22.00; //#715's Green Shield (affects flyers ability to fly); you cannot fly over it
+		
+		RADII[731] = 02.00; //Mushroom; non corrosive
+		RADII[732] = 02.00; //Mushroom; corrosive
+		
+		RADII[900] = 05.02; //Lunar Lander; Derelict of Apollo Mission
+		RADII[901] = 03.25; //Lunar Roving Vehicle
+		RADII[902] = 00.00; //American flag; Derelict of Apollo Mission
+		RADII[903] = 01.75; //Inverted Satelite Dish; Derelict of Apollo Mission
+		RADII[904] = 02.00; //Satelite Dish; Derelict of Apollo Mission
+		RADII[910] = 03.75; //Home
+		
+		CATEGORY_NAMES[2] = "Portico";
+		CATEGORY_NAMES[3] = "SpaceShip";
+		CATEGORY_NAMES[4] = "Derrick";
+		CATEGORY_NAMES[5] = "BotFactory";
+		CATEGORY_NAMES[6] = "PowerStation";
+		CATEGORY_NAMES[7] = "Converter";
+		CATEGORY_NAMES[8] = "RepairStation";
+		CATEGORY_NAMES[9] = "DefenseTower";
+		CATEGORY_NAMES[10] = "AlienNest";
+		CATEGORY_NAMES[11] = "ResearchCenter";
+		CATEGORY_NAMES[12] = "RadarStation";
+		CATEGORY_NAMES[13] = "PowerPlant";
+		CATEGORY_NAMES[14] = "AutoLab";
+		CATEGORY_NAMES[15] = "NuclearPlant";
+		CATEGORY_NAMES[16] = "StartArea";
+		CATEGORY_NAMES[17] = "EndArea";
+		CATEGORY_NAMES[18] = "ExchangePost";
+		CATEGORY_NAMES[19] = "PowerCaptor";
+		CATEGORY_NAMES[20] = "Target1 (gate)";
+		CATEGORY_NAMES[21] = "Target2 (center)";
+		CATEGORY_NAMES[22] = "Vault";
+		CATEGORY_NAMES[23] = "Houston";
+		CATEGORY_NAMES[24] = "Destroyer";
+		CATEGORY_NAMES[31] = "TitaniumOre";
+		CATEGORY_NAMES[32] = "UraniumOre";
+		CATEGORY_NAMES[33] = "Titanium";
+		CATEGORY_NAMES[34] = "PowerCell";
+		CATEGORY_NAMES[35] = "NuclearCell";
+		CATEGORY_NAMES[36] = "OrgaMatter";
+		CATEGORY_NAMES[37] = "BlackBox";
+		CATEGORY_NAMES[38] = "TNT";
+		CATEGORY_NAMES[50] = "PowerSpot";
+		CATEGORY_NAMES[51] = "TitaniumSpot";
+		CATEGORY_NAMES[52] = "UraniumSpot";
+		CATEGORY_NAMES[53] = "KeyASpot";
+		CATEGORY_NAMES[54] = "KeyBSpot";
+		CATEGORY_NAMES[55] = "KeyCSpot";
+		CATEGORY_NAMES[56] = "KeyDSpot";
+		CATEGORY_NAMES[60] = "Mine";
+		CATEGORY_NAMES[61] = "Firework";
+		CATEGORY_NAMES[62] = "arrow above object (Visit)";
+		CATEGORY_NAMES[63] = "Bag";
+		CATEGORY_NAMES[70] = "Greenery0";
+		CATEGORY_NAMES[71] = "Greenery1";
+		CATEGORY_NAMES[72] = "Greenery2";
+		CATEGORY_NAMES[73] = "Greenery3";
+		CATEGORY_NAMES[74] = "Greenery4";
+		CATEGORY_NAMES[75] = "Greenery5";
+		CATEGORY_NAMES[76] = "Greenery6";
+		CATEGORY_NAMES[77] = "Greenery7";
+		CATEGORY_NAMES[78] = "Greenery8";
+		CATEGORY_NAMES[79] = "Greenery9";
+		CATEGORY_NAMES[80] = "Greenery10";
+		CATEGORY_NAMES[81] = "Greenery11";
+		CATEGORY_NAMES[82] = "Greenery12";
+		CATEGORY_NAMES[83] = "Greenery13";
+		CATEGORY_NAMES[84] = "Greenery14";
+		CATEGORY_NAMES[85] = "Greenery15";
+		CATEGORY_NAMES[86] = "Greenery16";
+		CATEGORY_NAMES[87] = "Greenery17";
+		CATEGORY_NAMES[88] = "Greenery18";
+		CATEGORY_NAMES[89] = "Greenery19";
+		CATEGORY_NAMES[90] = "Tree0";
+		CATEGORY_NAMES[91] = "Tree1";
+		CATEGORY_NAMES[92] = "Tree2";
+		CATEGORY_NAMES[93] = "Tree3";
+		CATEGORY_NAMES[94] = "Tree4";
+		CATEGORY_NAMES[95] = "Tree5";
+		CATEGORY_NAMES[100] = "PracticeBot";
+		CATEGORY_NAMES[101] = "track-trainer (unused)";
+		CATEGORY_NAMES[102] = "fly-trainer (unused)";
+		CATEGORY_NAMES[103] = "insect-trainer (unused)";
+		CATEGORY_NAMES[110] = "WheeledGrabber";
+		CATEGORY_NAMES[111] = "TrackedGrabber";
+		CATEGORY_NAMES[112] = "WingedGrabber";
+		CATEGORY_NAMES[113] = "LeggedGrabber";
+		CATEGORY_NAMES[120] = "WheeledShooter";
+		CATEGORY_NAMES[121] = "TrackedShooter";
+		CATEGORY_NAMES[122] = "WingedShooter";
+		CATEGORY_NAMES[123] = "LeggedShooter";
+		CATEGORY_NAMES[130] = "WheeledOrgaShooter";
+		CATEGORY_NAMES[131] = "TrackedOrgaShooter";
+		CATEGORY_NAMES[132] = "WingedOrgaShooter";
+		CATEGORY_NAMES[133] = "LeggedOrgaShooter";
+		CATEGORY_NAMES[140] = "WheeledSniffer";
+		CATEGORY_NAMES[141] = "TrackedSniffer";
+		CATEGORY_NAMES[142] = "WingedSniffer";
+		CATEGORY_NAMES[143] = "LeggedSniffer";
+		CATEGORY_NAMES[200] = "Thumper";
+		CATEGORY_NAMES[201] = "PhazerShooter";
+		CATEGORY_NAMES[202] = "Recycler";
+		CATEGORY_NAMES[203] = "Shielder";
+		CATEGORY_NAMES[210] = "Subber";
+		CATEGORY_NAMES[211] = "TargetBot";
+		CATEGORY_NAMES[212] = "Scribbler";
+		CATEGORY_NAMES[213] = "MissionController";
+		CATEGORY_NAMES[250] = "WayPoint";
+		CATEGORY_NAMES[260] = "BlueFlag";
+		CATEGORY_NAMES[261] = "RedFlag";
+		CATEGORY_NAMES[262] = "GreenFlag";
+		CATEGORY_NAMES[263] = "YellowFlag";
+		CATEGORY_NAMES[264] = "VioletFlag";
+		CATEGORY_NAMES[270] = "KeyA";
+		CATEGORY_NAMES[271] = "KeyB";
+		CATEGORY_NAMES[272] = "KeyC";
+		CATEGORY_NAMES[273] = "KeyD";
+		CATEGORY_NAMES[300] = "Me";
+		CATEGORY_NAMES[301] = "Robby (toto)";
+		CATEGORY_NAMES[302] = "Tech";
+		CATEGORY_NAMES[400] = "Barrier0";
+		CATEGORY_NAMES[401] = "Barrier1";
+		CATEGORY_NAMES[402] = "Barrier2";
+		CATEGORY_NAMES[403] = "Barrier3";
+		CATEGORY_NAMES[500] = "AlienQueen";
+		CATEGORY_NAMES[501] = "AlienEgg";
+		CATEGORY_NAMES[502] = "AlienAnt";
+		CATEGORY_NAMES[503] = "AlienSpider";
+		CATEGORY_NAMES[504] = "AlienWasp";
+		CATEGORY_NAMES[505] = "AlienWorm";
+		CATEGORY_NAMES[600] = "WreckBotw1";
+		CATEGORY_NAMES[601] = "WreckBotw2";
+		CATEGORY_NAMES[602] = "WreckBott1";
+		CATEGORY_NAMES[603] = "WreckBott2";
+		CATEGORY_NAMES[604] = "WreckBotr1";
+		CATEGORY_NAMES[605] = "WreckBotr2";
+		CATEGORY_NAMES[606] = "RuinBotFactory";
+		CATEGORY_NAMES[607] = "RuinDoor";
+		CATEGORY_NAMES[608] = "RuinSupport";
+		CATEGORY_NAMES[609] = "RuinRadar";
+		CATEGORY_NAMES[610] = "RuinConvert";
+		CATEGORY_NAMES[611] = "RuinBaseCamp";
+		CATEGORY_NAMES[612] = "RuinHeadCamp";
+		CATEGORY_NAMES[620] = "Teen0";
+		CATEGORY_NAMES[621] = "Teen1";
+		CATEGORY_NAMES[622] = "Teen2";
+		CATEGORY_NAMES[623] = "Teen3";
+		CATEGORY_NAMES[624] = "Teen4";
+		CATEGORY_NAMES[625] = "Teen5";
+		CATEGORY_NAMES[626] = "Teen6";
+		CATEGORY_NAMES[627] = "Teen7";
+		CATEGORY_NAMES[628] = "Teen8";
+		CATEGORY_NAMES[629] = "Teen9";
+		CATEGORY_NAMES[630] = "Teen10";
+		CATEGORY_NAMES[631] = "Teen11";
+		CATEGORY_NAMES[632] = "Teen12";
+		CATEGORY_NAMES[633] = "Teen13";
+		CATEGORY_NAMES[634] = "Teen14";
+		CATEGORY_NAMES[635] = "Teen15";
+		CATEGORY_NAMES[636] = "Teen16";
+		CATEGORY_NAMES[637] = "Teen17";
+		CATEGORY_NAMES[638] = "Teen18";
+		CATEGORY_NAMES[639] = "Teen19";
+		CATEGORY_NAMES[640] = "Teen20";
+		CATEGORY_NAMES[641] = "Teen21";
+		CATEGORY_NAMES[642] = "Teen22";
+		CATEGORY_NAMES[643] = "Teen23";
+		CATEGORY_NAMES[644] = "Teen24";
+		CATEGORY_NAMES[645] = "Teen25";
+		CATEGORY_NAMES[646] = "Teen26";
+		CATEGORY_NAMES[647] = "Teen27";
+		CATEGORY_NAMES[648] = "Teen28";
+		CATEGORY_NAMES[649] = "Teen29";
+		CATEGORY_NAMES[650] = "Teen30";
+		CATEGORY_NAMES[651] = "Teen31";
+		CATEGORY_NAMES[652] = "Teen32";
+		CATEGORY_NAMES[653] = "Teen33";
+		CATEGORY_NAMES[654] = "Stone (Teen34)";
+		CATEGORY_NAMES[655] = "Teen35";
+		CATEGORY_NAMES[656] = "Teen36";
+		CATEGORY_NAMES[657] = "Teen37";
+		CATEGORY_NAMES[658] = "Teen38";
+		CATEGORY_NAMES[659] = "Teen39";
+		CATEGORY_NAMES[660] = "Teen40";
+		CATEGORY_NAMES[661] = "Teen41";
+		CATEGORY_NAMES[662] = "Teen42";
+		CATEGORY_NAMES[663] = "Teen43";
+		CATEGORY_NAMES[664] = "Teen44";
+		CATEGORY_NAMES[700] = "Quartz0";
+		CATEGORY_NAMES[701] = "Quartz1";
+		CATEGORY_NAMES[702] = "Quartz2";
+		CATEGORY_NAMES[703] = "Quartz3";
+		CATEGORY_NAMES[710] = "MegaStalk0";
+		CATEGORY_NAMES[711] = "MegaStalk1";
+		CATEGORY_NAMES[712] = "MegaStalk2";
+		CATEGORY_NAMES[713] = "MegaStalk3";
+		CATEGORY_NAMES[714] = "MegaStalk4";
+		CATEGORY_NAMES[715] = "MegaStalk5";
+		CATEGORY_NAMES[731] = "Mushroom1";
+		CATEGORY_NAMES[732] = "Mushroom2";
+		CATEGORY_NAMES[900] = "ApolloLEM";
+		CATEGORY_NAMES[901] = "ApolloJeep";
+		CATEGORY_NAMES[902] = "ApolloFlag";
+		CATEGORY_NAMES[903] = "ApolloModule";
+		CATEGORY_NAMES[904] = "ApolloAntenna";
+		CATEGORY_NAMES[910] = "Home";
+	}
+	
+	void initFlatSpacesAroundShip(float flatmin, float radius, int numPoints)
+	{
+		object item;
+		
+		if (found(SpaceShip))
+		{
+			item = radar(SpaceShip);
+		}
+		else
+		{
+			item = radar(Me);
+		}
+		pointsAroundShip = flatSpacesAroundCenter(item.position, flatmin, radius, numPoints);
+		nextPoint = 0;
+	}
+	
+	int maxCanBuild()
+	{
+		int m = 0;
+		int[] c;
+		int i = 0;
+		
+		c[i++] = BotFactory;
+		c[i++] = ResearchCenter;
+		c[i++] = RepairCenter;
+		c[i++] = RadarStation;
+		c[i++] = ExchangePost;
+		c[i++] = DefenseTower;
+		c[i++] = AutoLab;
+		c[i++] = PowerStation;
+		c[i++] = PowerPlant;
+		c[i++] = NuclearPlant;
+		c[i++] = Converter;
+		c[i++] = PowerCaptor;
+		
+		for (i = 0; i < sizeof(c); i++)
+		{
+			if (canbuild(c[i]))
+			{
+				m++;
+			}
+		}
+		
+		return m;
+	}
+}
+
+public void object::missionComplete()
+{
+	Message("Mission completed");
+}
+
+public void object::Message(string s)
+{
+	SatCom com();
+	
+	com.returnMessage = category + ": " + s;
+	message(com.returnMessage);
+}
+
+public float object::flatRequire(int c)
+{
+	float f;
+	
+	switch (c)
+	{
+		case BotFactory: f = 7.5; break;
+		case ResearchCenter: f = 5; break;
+		case RadarStation: f = 2.5; break;
+		case ExchangePost: f = 2.5; break;
+		case RepairCenter: f = 6; break;
+		case DefenseTower: f = 3.5; break;
+		case AutoLab: f = 6; break;
+		case PowerStation: f = 6; break;
+		case PowerPlant: f = 4; break;
+		case NuclearPlant: f = 10; break;
+		case Converter: f = 6; break;
+		case Derrick: f = 2.5; break;
+		case PowerCaptor: f = 10; break;
+		default: f = 7.5;
+	}
+	
+	return f;
+}
+
+public float object::mid(float f1, float f2)
+{
+	return (f1 + f2)/2;
+}
+
+public point object::mid(point p1, point p2)
+{
+	point m (mid(p1.x,p2.x),mid(p1.y,p2.y),mid(p1.z,p2.z));
+	return m;
+}
+
+public point object::mid(point p1, point p2, float d)
+{
+	    // Calculate the direction vector from p1 to p2
+	    float dirX = p2.x - p1.x;
+	    float dirY = p2.y - p1.y;
+	    float dirZ = p2.z - p1.z;
+	    
+	    // Calculate the length of the direction vector
+	    float length = sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
+	    
+	    // Normalize the direction vector
+	    float unitX = dirX / length;
+	    float unitY = dirY / length;
+	    float unitZ = dirZ / length;
+	    
+	    // Calculate the new point at the specified distance from p2
+	    point m;
+	    m.x = p2.x - unitX * d;
+	    m.y = p2.y - unitY * d;
+	    m.z = p2.z - unitZ * d;
+	    
+	    return m;
+}
+
+public point object::awayShipPoint(point p)
+{
+	point t = mid(location(SpaceShip),p);
+	point a(p.x*2-t.x,p.y*2-t.y,p.z*2-t.z);
+	a.z = topo(a);
+	return a;
+}
+
+public point object::awayPoint(point p)
+{
+	point t = position;
+	point a(t.x*2-p.x,t.y*2-p.y,t.z*2-p.z);
+	return a;
+}
+
+public void object::turnAway(point p)
+{
+	turn(direction(awayPoint(p)));
+}
+
+public string object::initProgram(string progName)
+{
+	string prog = "extern void object::Start()\n";
+	prog += "{\n";
+	prog += progName+";\n";
+	prog += "}\n";
+	
+	return prog;
+}
+
+public bool object::isShooter(int c)
+{
+	SatCom com();
+	
+	for (int i = 0; i < sizeof(com.ALL_SHOOTERS); i++)
+	{
+		if (com.ALL_SHOOTERS[i] == c)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+public bool object::isNull(object o)
+{
+	if (o == null)
+	{
+		return true;
+	}
+	return false;
+}
+
+public bool object::isNull(point p)
+{
+	if (p.x == nan || p.y == nan || p.z == nan)
+	{
+		return true;
+	}
+	return false;
+}
+
+public float object::distance2SpaceShip(point p)
+{
+	SatCom com();
+	
+	return distance2d(p,com.spaceShip.position);
+}
+
+public float object::distance2Ant(point p)
+{
+	SatCom com();
+	
+	if (!com.detectedAnt)
+	{
+		return 999999;
+	}
+	
+	object o = search(AlienAnt,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public float object::distance2Spider(point p)
+{
+	SatCom com();
+	
+	if (!com.detectedSpider)
+	{
+		return 999999;
+	}
+	
+	object o = search(AlienSpider,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public float object::distance2Worm(point p)
+{
+	SatCom com();
+	
+	if (!com.detectedWorm)
+	{
+		return 999999;
+	}
+	
+	object o = search(AlienWorm,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public float object::distance2Wasp(point p)
+{
+	object o = search(AlienWasp,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public float object::distance2Enemies(point p)
+{
+	SatCom com();
+	
+	object o = search(com.enemies,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public float object::distance2Ants(point p)
+{
+	SatCom com();
+	
+	object o = search(com.ants,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public float object::distance2GraviPlant(point p)
+{
+	SatCom com();
+	
+	if (!com.detectedGraviPlant)
+	{
+		return 999999;
+	}
+	
+	object o = search(GraviPlant,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public float object::distance2Roots(point p)
+{
+	SatCom com();
+	
+	object o = search(com.roots,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public void object::plantFlag(point p, int c)
+{
+	SatCom com();
+	point f;
+	
+	if (com.plantFlag)
+	{
+		f.x = p.x;
+		f.y = p.y;
+		f.z = topo(p);
+		produce(f,0,c);
+	}
+}
+
+public void object::fly2p(point p)
+{
+	SatCom com();
+	
+	turn(direction(p));
+	while (distance2d(this.position,p) > 5)
+	{
+		fly(p);
+		if (this.altitude < 2)
+		{
+			break;
+		}
+	}
+}
+
+public void object::crawl(point p)
+{
+	float dir;
+	point sensor;
+	
+	for (int i = 30; i > 0; i--)
+	{
+		sensor = aheadPoint(i,i-60);
+		if (topo(sensor) < 0)
+		{
+			motor(-1,-1);
+			wait(1);
+			dir = 60-i;
+			motor(1 - dir/90,1 + dir/90);
+			wait(1);
+			return;
+		}
+	}
+	
+	dir = direction(p);
+	motor(1 - dir/90,1 + dir/90);
+}
+
+public void object::fly(point p)
+{
+	SatCom com();
+	
+	float dis;
+	float dif;
+	float ang;
+	float dir;
+	point sensor,left,right;
+	object root,o;
+	
+	if (p.z <= 0 && this.altitude < 2)
+	{
+		return;
+	}
+	
+	dis = distance(this.position,p);
+	dif = p.z-this.position.z;
+	ang = asin(dif/dis);
+	jet(1-(ang/-20));
+	
+	if (com.detectedGraviPlant)
+	{
+		root = radar(GraviPlant,0,360,0,com.safeAnt);
+		if (root != null)
+		{
+			dir = direction(root.position);
+			if (distance2d(this.position,root.position) <= com.safeRoot && -60 < dir && dir < 60)
+			{
+				Message("Too near to GraviPlant. Pull back to avoid danger zone");
+				turn(dir);
+				while (distance2d(this.position,root.position) <= com.safeRoot)
+				{
+					motor(-1,-1);
+					if (this.temperature > com.temperatureThreshold)
+					{
+						gotoSafeLZ();
+						break;
+					}
+				}
+				return;
+			}
+			else
+			{
+				dir = direction(p);
+				motor(1 - dir/90,1 + dir/90);
+				return;
+			}
+		}
+	}
+	
+	o = radar(SpaceShip,0,30,com.safeRoot,com.safeAnt);
+	if (o != null)
+	{
+		dir = 25;
+		motor(1 - dir/90,1 + dir/90);
+		return;
+	}
+	
+	o = radar(com.ALL_BOTS,0,30,com.safeRoot,com.safeAnt);
+	if (o != null)
+	{
+		dir = 25;
+		motor(1 - dir/90,1 + dir/90);
+		return;
+	}
+	
+	for (int i = 30; i > 0; i--)
+	{
+		sensor = aheadPoint(i,i-60);
+		if (topo(sensor) - 1 > this.position.z)
+		{
+			dir = 60-i;
+			motor(1 - dir/90,1 + dir/90);
+			return;
+		}
+	}
+	
+	if (distance2d(this.position,com.spaceShip.position) < 2.5)
+	{
+		dir = 25;
+		motor(-1,-1);
+		wait(1);
+		motor(1 - dir/90,1 + dir/90);
+		return;
+	}
+	
+	dir = direction(p);
+	motor(1 - dir/90,1 + dir/90);
+	//motor(1-dir/22.5,1+dir/22.5);
+}
+
+public void object::fly(object o)
+{
+	SatCom com();
+	point p,last;
+	com.returnMessage = category+": fly(object o) start";
+	com.returnCode = 1;
+	int i;
+	
+	if (o == null)
+	{
+		com.returnMessage = category+": Object null, could not fly to object";
+		com.returnCode = 1;
+		return;
+	}
+	
+	p = aheadPoint(o,5,0);
+	p.z = topo(p);
+	turn(direction(p));
+	jet(1);
+	
+	i = 0;
+	last = this.position;
+	while (o != null && distance2d(this.position,p) > 5 && distance2d(this.position,o.position) > 5)
+	{
+		if (this.temperature > com.temperatureThreshold)
+		{
+			gotoSafeLZ(o);
+		}
+		
+		i++;
+		fly(p);
+		if (isStuck(last))
+		{
+			if (i > 10)
+			{
+				Message("Avoiding obstacle");
+				motor(0,0);
+				jet(1);
+				wait(1);
+				motor(-1,-1);
+				wait(1);
+				turn(45);
+				motor(1,1);
+				wait(1);
+				i = 0;
+				last = this.position;
+			}
+		}
+		else
+		{
+			i = 0;
+			last = this.position;
+		}
+	}
+	
+	motor(0,0);
+	while (this.altitude > 0)
+	{
+		jet(-0.9);
+	}
+	com.returnCode = 0;
+}
+
+public bool object::isStuck(point last)
+{
+	SatCom com();
+	bool atStuckPoint = false;
+	
+	//if ((abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05) || radar(Any,0,360,0,2) != null || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
+	//if ((abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05) || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
+	//if (distance2d(this.position,last) <= 0.05 || radar(Any,0,360,0,2) != null || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
+	//if (distance2d(this.position,last) <= 0.05)
+	if (abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05) 
+	{
+		atStuckPoint = true;
+	}
+	
+	return atStuckPoint;
+}
+
+public bool object::onSpaceShipCone()
+{
+	SatCom com();
+	
+	if (com.spaceShip.position.z + 15 < this.position.z && this.position.z < com.spaceShip.position.z + 30)
+	{
+		return true;
+	}
+	return false;
+}
+
+public object object::Radar(int c)
+{
+	object o;
+	o = radar(c);
+	
+	if (o != null)
+	{
+		return o;
+	}
+	
+	object item;
+	object needItem = null;
+	float dist;
+	float minDist = 999999;
+	int i = 0;
+	
+	while ((item = retobject(i++)) != null)
+	{
+		if (item.position.x == nan || item == this) continue;
+		dist = distance2d(this.position, item.position);
+		if ((c == Any && dist <= 10) || (item.category == c && dist < minDist))
+		{
+			needItem = item;
+			minDist = dist;
+		}
+	}
+	return needItem;
+}
+
+public object[] object::RadarAll(int c)
+{
+	object o[],item;
+	o = radarall(c);
+	
+	if (sizeof(o) > 0)
+	{
+		return o;
+	}
+	
+	int i = 0;
+	int j = 0;
+	
+	while ((item = retobject(i++)) != null)
+	{
+		if (item.position.x == nan || item == this) continue;
+		if (c == Any || item.category == c)
+		{
+			o[j++] = item;
+		}
+	}
+	return o;
+}
+
+public void object::go(point p)
+{
+	errmode(0);
+	float angle = 45;
+	float m = 0.8;
+	int i;
+	
+	if (distance2d(position,p) > 50 && nearObstacles(p))
+	{
+		goto(freePoint(p));
+	}
+	
+	i = 0;
+	while (goto(p) != 0 && i < 10)
+	{
+		turn(45);
+		move(-0.5);
+		wait(1);
+		i++;
+	}
+	errmode(1);
+}
+
+public void object::go(object o)
+{
+	SatCom com();
+	com.returnCode = 1;
+	
+	if (o == null)
+	{
+		Message("Object null, could not goto object");
+		com.returnCode = 1;
+		return;
+	}
+	
+	Message("Goto "+catName(o.category));
+	
+	if ((category == WingedShooter || category == WingedOrgaShooter) && distance2d(position,o.position) > 100)
+	{
+		fly(o);
+	}
+	
+	go(o.position);
+	com.returnCode = 0;
+}
+
+public void object::go(int c)
+{
+	go(c,0);
+}
+
+public void object::go(int c, float m)
+{
+	object o;
+	o = radar(c,0,360,m,1000);
+	go(o);
+}
+
+public void object::goGrab(int c)
+{
+	SatCom com();
+	
+	object o;
+	
+	if (c == Titanium)
+	{
+		if ((com.builderInUsed && distance2d(this.position,com.buildPoint) < 5) || (radar(BotFactory,0,120,0,6) != null))
+		{
+			goGrab(c,10);
+		}
+		else
+		{
+			goGrab(c,0);
+		}
+	}
+	else
+	{
+		goGrab(c,0);
+	}
+}
+
+public void object::goGrab(int c, float m)
+{
+	object o;
+	if (c == Titanium)
+	{
+		o = radar(c,0,360,m,1000);
+		if (o == null)
+		{
+			moveObjToObj(TitaniumOre,Converter);
+			waitForAvailable(Titanium,location(Converter));
+			o = radar(c);
+		}
+		go(o);
+	}
+	else if (c == NuclearCell)
+	{
+		o = radar(c,0,360,m,1000);
+		if (o == null)
+		{
+			o = radar(NuclearPlant);
+		}
+		go(o);
+	}
+	else
+	{
+		go(c,m);
+	}
+	grab();
+}
+
+public point object::location(int c)
+{
+	SatCom com();
+	com.returnCode = 1;
+	
+	object o;
+	point p;
+	point r(nan,nan,nan);
+	
+	if (c == SpaceShip && !found(SpaceShip))
+	{
+		o = radar(Me);
+	}
+	else
+	{
+		o = radar(c);
+	}
+	
+	if (o == null)
+	{
+		Message("Object null, could not get location of object");
+		com.returnCode = 1;
+		return r;
+	}
+	
+	p = o.position;
+	com.returnCode = 0;
+	return p;
+}
+
+public void object::waitForAvailable(int c)
+{
+	object o;
+	int i = 0;
+	if (c == NuclearCell)
+	{
+		if (found(NuclearCell))
+		{
+			return;
+		}
+		o = radar(NuclearPlant);
+		while (isbusy(o) || o.energyCell == null || o.energyCell.category != NuclearCell)
+		{
+			if (i == 0)
+			{
+				Message("Wait for "+ catName(c) +" to be available");
+			}
+			i++;
+			wait(5);
+		}
+	}
+	else
+	{
+		while (radar(c) == null)
+		{
+			if (i == 0)
+			{
+				Message("Wait for "+ catName(c) +" to be available");
+			}
+			i++;
+			wait(5);
+		}
+	}
+}
+
+public void object::waitForAvailable(int c, point p)
+{
+	int i = 0;
+	while (search(c,p,0,5) == null)
+	{
+		if (i == 0)
+		{
+			Message("Wait for "+ catName(c) +" to be available");
+		}
+		i++;
+		wait(5);
+	}
+}
+
+public void object::waitForAvailable(int c, float d)
+{
+	int i = 0;
+	while (radar(c,0,360,0,d) == null)
+	{
+		if (i == 0)
+		{
+			Message("Wait for "+ catName(c) +" to be available");
+		}
+		i++;
+		wait(5);
+	}
+}
+
+public void object::waitForResearch(int c)
+{
+	int i = 0;
+	while (!researched(c))
+	{
+		if (i == 0)
+		{
+			Message("Wait for research to complete");
+		}
+		i++;
+		wait(5);
+	}
+}
+
+public bool object::astronautOnShip()
+{
+	object me,ship;
+	me = radar(Me);
+	ship = radar(SpaceShip);
+	
+	if (distance2d(me.position,ship.position) > 7)
+	{
+		Message("Astronaut, please go back to SpaceShip so that we can take off");
+		return false;
+	}
+	return true;
+}
+
+public void object::switchCell()
+{
+	grab(InFront);
+	drop(Behind);
+	grab(EnergyCell);
+	drop(InFront);
+	grab(Behind);
+	drop(EnergyCell);
+}
+
+public bool object::isBot(int c)
+{
+	SatCom com();
+	
+	for (int i = 0; i < sizeof(com.ALL_BOTS); i++)
+	{
+		if (com.ALL_BOTS[i] == c)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+public void object::moveObjToObj(int c1,int c2)
+{
+	SatCom com();
+	com.returnCode = 1;
+	com.returnMessage = category + ": Moving "+catName(c1)+" to "+catName(c2);
+	
+	if (this.energyCell.energyLevel < com.energyThreshold)
+	{
+		chargeCell();
+	}
+	
+	if (this.load != null)
+	{
+		if (this.load.category != c1)
+		{
+			drop(Behind);
+			goGrab(c1);
+		}
+	}
+	else
+	{
+		goGrab(c1);
+	}
+	
+	if (c1 == PowerCell && c2 != PowerCaptor)
+	{
+		if (this.load.energyLevel < 1)
+		{
+			chargeCell();
+		}
+	}
+	
+	if ((c1 == PowerCell || c1 == NuclearCell) && c2 != PowerCaptor)
+	{		
+		object obj[],o;
+		if (isBot(c2))
+		{
+			o = radar(BotFactory);
+			if (o != null)
+			{
+				waitForAvailable(c2,o.position);
+			}
+		}
+		
+		obj = radarall(c2);
+		for (int i = 0; i < sizeof(obj); i++)
+		{
+			o = obj[i];
+			if (o.energyCell == null)
+			{
+				go(o);
+				break;
+			}
+		}		
+	}
+	else
+	{
+		go(c2);
+	}
+	
+	if (c2 != SpaceShip)
+	{
+		if (c2 == PowerCaptor)
+		{
+			if (radar(PowerCell,0,60,0,5) == null)
+			{
+				drop();
+			}
+			else if (radar(PowerCell,90,60,0,5) == null)
+			{
+				turn(90);
+				drop();
+				turn(-90);
+			}
+			else if (radar(PowerCell,-90,60,0,5) == null)
+			{
+				turn(-90);
+				drop();
+				turn(90);
+			}
+			move(-4);
+		}
+		else
+		{
+			drop();
+		}
+		
+		if (isBot(c2))
+		{
+			move(-8);
+		}
+		else
+		{
+			move(-3);
+		}
+	}
+	
+	com.returnMessage = category + ": Moved "+catName(c1)+" to "+catName(c2);
+	com.returnCode = 0;
+}
+
+public void object::moveObjToPlace(int c,point p)
+{
+	SatCom com();
+	com.returnCode = 1;
+	com.returnMessage = category + ": Moving "+catName(c)+" to place";
+	
+	if (this.energyCell.energyLevel < com.energyThreshold)
+	{
+		chargeCell();
+	}
+	
+	if (this.load != null)
+	{
+		if (this.load.category != c)
+		{
+			drop(Behind);
+			goGrab(c);
+		}
+	}
+	else
+	{
+		goGrab(c);
+	}
+	
+	go(p);
+	drop();
+	move(-3);
+	
+	com.returnMessage = category + ": Moved "+catName(c)+" to place";
+	com.returnCode = 0;
+}
+
+public void object::repair()
+{
+	SatCom com();
+	com.returnCode = 1;
+	point p;
+	object repairCenter = radar(RepairCenter);
+	
+	if (repairCenter == null)
+	{
+		com.returnMessage = category+": RepairCenter not found, could not repair";
+		com.returnCode = 1;
+		return;
+	}
+	
+	p = this.position;
+	com.repairQueue.enqueue(this);
+	com.returnMessage = category+": Enqueue for repair";
+	
+	if (com.repairQueue.peek() != this)
+	{
+		if (category == WingedShooter || category == WingedOrgaShooter)
+		{
+			Message("RepairCenter is in used, land and wait for release");
+			gotoSafeLZ(repairCenter);
+		}
+		else
+		{
+			Message("Goto RepairCenter");
+			p = randomFreePoint(repairCenter.position,10,30); 
+			go(p);
+		}
+	}
+	
+	while (true)
+	{
+		if (com.repairQueue.peek() == this)
+		{
+			break;
+		}
+		if (distance2Enemies(this.position) <= com.safeAnt)
+		{
+			if (category == WingedShooter || category == WingedOrgaShooter)
+			{
+				gotoSafeLZ(repairCenter);
+			}	
+		}
+		wait(1);
+	}
+	
+	if ((category == WingedShooter || category == WingedOrgaShooter) && distance2d(this.position,repairCenter.position) > 100)
+	{
+		fly(repairCenter);
+	}
+	
+	go(RepairCenter);
+	while (this.shieldLevel < 1)
+	{
+		wait(1);
+	}
+	move(-3);
+	com.repairQueue.dequeue();
+	if (category != WingedShooter && category != WingedOrgaShooter && !found(com.ants))
+	{
+		go(p);
+	}
+	com.returnMessage = category+": Repaired";
+	com.returnCode = 0;
+}
+
+public void object::chargeCell()
+{
+	SatCom com();
+	com.returnMessage = category+": chargeCell()";
+	com.returnCode = 1;
+	point p;
+	object powerStation;
+	
+	powerStation = radar(PowerStation);
+	if (powerStation == null)
+	{
+		powerStation = radar(PowerCaptor);
+	}
+	
+	if (powerStation == null)
+	{
+		com.returnMessage = category+": PowerStation not found, could not charge PowerCell";
+		com.returnCode = 1;
+		return;
+	}
+	
+	p = this.position;
+	com.chargeQueue.enqueue(this);
+	com.returnMessage = category+": Enqueue for charge PowerCell";
+	
+	if (com.chargeQueue.peek() != this)
+	{
+		if (category == WingedShooter || category == WingedOrgaShooter)
+		{
+			Message("PowerStation is in used, land and wait for release");
+			gotoSafeLZ(powerStation);
+		}
+		else
+		{
+			Message("Goto PowerStation");
+			p = randomFreePoint(powerStation.position,10,30); 
+			go(p);
+		}
+	}
+	
+	while (true)
+	{
+		if (com.chargeQueue.peek() == this)
+		{
+			break;
+		}
+		if (distance2Enemies(this.position) <= com.safeAnt)
+		{
+			if (category == WingedShooter || category == WingedOrgaShooter)
+			{
+				gotoSafeLZ(powerStation);
+			}	
+		}
+		wait(1);
+	}
+	
+	if ((category == WingedShooter || category == WingedOrgaShooter) && distance2d(this.position,powerStation.position) > 100)
+	{
+		fly(powerStation);
+	}
+	
+	go(powerStation);
+	if (powerStation.category == PowerStation)
+	{
+		while (this.energyCell.energyLevel < 1)
+		{
+			wait(1);
+		}
+		
+		if (this.load != null)
+		{
+			if (this.load.category == PowerCell)
+			{
+				while (this.load.energyLevel < 1)
+				{
+					wait(1);
+				}
+			}
+		}
+		move(-3);
+	}
+	else // powerStation.category == PowerCaptor
+	{
+		if (this.category == WingedGrabber || this.category == WheeledGrabber)
+		{
+			object cells[],cell,o;
+			float dir;
+			
+			cells = radarall(PowerCell,0,360,0,6);
+			cell = null;
+			for (int i = 0; i < sizeof(cells); i++)
+			{
+				o = cells[i];
+				if (o.energyLevel == 1)
+				{
+					cell = o;
+					break;
+				}
+			}
+			
+			if (cell == null || this.load != null)
+			{
+				while (this.energyCell.energyLevel < 1)
+				{
+					wait(1);
+				}
+			}
+			else
+			{
+				dir = direction(cell.position);
+				if (-30 < dir && dir < 30)
+				{
+					grab();
+				}
+				else if (dir > 30)
+				{
+					turn(90);
+					grab();
+				}
+				else if (dir < -30)
+				{
+					turn(-90);
+					grab();
+				}
+				move(4);
+				drop();
+				switchCell();
+				grab();
+				turn(180);
+				drop();
+			}
+		}
+		else
+		{
+			while (this.energyCell.energyLevel < 1)
+			{
+				wait(1);
+			}
+			
+			// Calculate the angle difference
+			float angle_difference = (180+powerStation.orientation) - this.orientation;
+			
+			// Normalize the angle difference
+			if (angle_difference > 180)
+			{
+				angle_difference -= 360;
+			}
+			else if (angle_difference < -180)
+			{
+				angle_difference += 360;
+			}
+			
+			// Turn the bot by the normalized angle difference
+			turn(angle_difference);
+		}
+		move(-7);
+	}
+	
+	com.chargeQueue.dequeue();
+	if (!found(com.ants))
+	{
+		go(p);
+	}
+	com.returnMessage = category+": Charged PowerCell";
+	com.returnCode = 0;
+}
+
+public void object::chargeCell(object o)
+{
+	SatCom com();
+	com.returnMessage = category+": chargeCell(object o)";
+	com.returnCode = 1;
+	
+	if (!found(PowerStation))
+	{
+		com.returnMessage = category+": PowerStation not found, could not charge PowerCell for object";
+		com.returnCode = 1;
+		return;
+	}
+	
+	if (o == null)
+	{
+		com.returnMessage = category+": Object null, could not charge PowerCell for object";
+		com.returnCode = 1;
+		return;
+	}
+	
+	if (this.load != null)
+	{
+		drop(Behind);
+	}
+	
+	go(o);
+	grab();
+	chargeCell();
+	go(o);
+	drop();
+	com.returnMessage = category+": Charged PowerCell for "+catName(o.category);
+	com.returnCode = 0;
+}
+
+public void object::chargeCell(int c)
+{
+	object o;
+	o = radar(c);
+	chargeCell(o);
+}
+
+public void object::checkEnergyCell()
+{
+	if (this.energyCell == null)
+	{
+		Message("Wait for EnergyCell to be loaded");
+	}
+	
+	while (this.energyCell == null)
+	{
+		wait(5);
+	}
+	
+	if (found(BotFactory))
+	{
+		if (distance2d(this.position,location(BotFactory)) < 3)
+		{
+			wait(5);
+			camerafocus(this);
+			move(-7);
+		}
+	}
+	camerafocus(this);
+}
+
+public void object::loadTitanium(point p)
+{
+	SatCom com();
+	com.returnMessage = category+": loadTitanium(point p)";
+	com.returnCode = 1;
+	
+	if (!found(Titanium) && ((this.load != null && this.load.category != Titanium) || (this.load == null && !found(TitaniumOre) && !found(Converter))))
+	{
+		Message("Titanium not found, could not load Titanium to point");
+		com.returnCode = 1;
+		return;
+	}
+	
+	if (this.energyCell.energyLevel < com.energyThreshold)
+	{
+		chargeCell();
+	}
+	
+	if (load != null)
+	{
+		if (load.category != Titanium)
+		{
+			drop(Behind);
+			goGrab(Titanium);
+		}
+	}
+	else
+	{
+		goGrab(Titanium);
+	}
+	go(p);
+	drop();
+	move(-3);
+	com.returnMessage = category+": Loaded Titanium to point";
+	com.returnCode = 0;
+}
+
+public void object::loadTitanium(object o)
+{
+	SatCom com();
+	com.returnMessage = category+": loadTitanium(object o)";
+	com.returnCode = 1;
+	
+	if (o == null)
+	{
+		Message("Object null, could not load Titanium to object");
+		com.returnCode = 1;
+		return;
+	}
+	loadTitanium(o.position);
+	com.returnMessage = category+": Loaded Titanium to "+catName(o.category);
+	com.returnCode = 0;
+}
+
+public void object::loadTitanium(int c)
+{
+	object o;
+	
+	if (radar(c) == null)
+	{
+		waitForAvailable(c);
+	}
+	o = radar(c);
+	loadTitanium(o);
+}
+
+public void object::loadTitaniumOre(object o)
+{
+	SatCom com();
+	com.returnMessage = category+": loadTitaniumOre(object o)";
+	com.returnCode = 1;
+	
+	if (!found(TitaniumOre) && load != null && load.category != TitaniumOre)
+	{
+		Message("TitaniumOre not found, could not load TitaniumOre to object");
+		com.returnCode = 1;
+		return;
+	}
+	
+	if (o == null)
+	{
+		Message("Object null, could not load TitaniumOre to object");
+		com.returnCode = 1;
+		return;
+	}
+	
+	if (this.energyCell.energyLevel < com.energyThreshold)
+	{
+		chargeCell();
+	}
+	
+	if (load != null)
+	{
+		if (load.category != TitaniumOre)
+		{
+			drop(Behind);
+			goGrab(TitaniumOre);
+		}
+	}
+	else
+	{
+		goGrab(TitaniumOre);
+	}
+	go(o);
+	drop();
+	move(-3);
+	com.returnMessage = category+": Loaded TitaniumOre to "+catName(o.category);
+	com.returnCode = 0;
+}
+
+public void object::loadTitaniumOre(int c)
+{
+	object o;
+	
+	if (radar(c) == null)
+	{
+		waitForAvailable(c);
+	}
+	o = radar(c);
+	loadTitaniumOre(o);
+}
+
+public void object::loadUraniumOre(object o)
+{
+	SatCom com();
+	com.returnMessage = category+": loadUraniumOre(object o)";
+	com.returnCode = 1;
+	
+	if (!found(UraniumOre) && load != null && load.category != UraniumOre)
+	{
+		Message("UraniumOre not found, could not load UraniumOre to object");
+		com.returnCode = 1;
+		return;
+	}
+	
+	if (o == null)
+	{
+		Message("Object null, could not load UraniumOre to object");
+		com.returnCode = 1;
+		return;
+	}
+	
+	if (this.energyCell.energyLevel < com.energyThreshold)
+	{
+		chargeCell();
+	}
+	
+	if (load != null)
+	{
+		if (load.category != UraniumOre)
+		{
+			drop(Behind);
+			goGrab(UraniumOre);
+		}
+	}
+	else
+	{
+		goGrab(UraniumOre);
+	}
+	go(o);
+	drop();
+	move(-3);
+	com.returnMessage = category+": Loaded UraniumOre to "+catName(o.category);
+	com.returnCode = 0;
+}
+
+public void object::loadUraniumOre(int c)
+{
+	object o;
+	
+	if (radar(c) == null)
+	{
+		waitForAvailable(c);
+	}
+	o = radar(c);
+	loadUraniumOre(o);
+}
+
+public string object::catName(int c)
+{
+	SatCom com();
+	return com.CATEGORY_NAMES[c];
+}
+
+public bool object::found(int c)
+{
+	object o;
+	
+	if (c == AlienWorm)
+	{
+		o = Radar(c);
+	}
+	else
+	{
+		o = radar(c);
+	}
+	
+	if (o == null)
+	{
+		return false;
+	}
+	return true;
+}
+
+public bool object::found(int[] c)
+{
+	object o;
+	
+	o = search(c,position);
+	
+	if (o == null)
+	{
+		return false;
+	}
+	return true;
+}
+
+public void object::avoidNearestObject(float m)
+{
+	int obj[];
+	int i=0;
+	obj[i++] = TitaniumOre;
+	obj[i++] = UraniumOre;
+	obj[i++] = Titanium;
+	obj[i++] = PowerCell;
+	obj[i++] = NuclearCell;
+	obj[i++] = OrgaMatter;
+	obj[i++] = TNT;
+	obj[i++] = BlackBox;
+	obj[i++] = KeyA;
+	obj[i++] = KeyB;
+	obj[i++] = KeyC;
+	obj[i++] = KeyD;
+	obj[i++] = WheeledGrabber;
+	obj[i++] = TrackedGrabber;
+	obj[i++] = WingedGrabber;
+	obj[i++] = LeggedGrabber;
+	obj[i++] = WheeledShooter;
+	obj[i++] = TrackedShooter;
+	obj[i++] = WingedShooter;
+	obj[i++] = LeggedShooter;
+	obj[i++] = WheeledSniffer;
+	obj[i++] = TrackedSniffer;
+	obj[i++] = WingedSniffer;
+	obj[i++] = LeggedSniffer;
+	obj[i++] = WheeledOrgaShooter;
+	obj[i++] = TrackedOrgaShooter;
+	obj[i++] = WingedOrgaShooter;
+	obj[i++] = LeggedOrgaShooter;
+	obj[i++] = Subber;
+	obj[i++] = Recycler;
+	obj[i++] = Shielder;
+	obj[i++] = Thumper;
+	obj[i++] = PhazerShooter;
+	obj[i++] = Me;
+	
+	object nearestObject = search(obj,this.position);
+	if (nearestObject == null)
+	{
+		return;
+	}
+	
+	float nearestDistance = distance2d(this.position,nearestObject.position);
+	float directToObj = direction(nearestObject.position);
+	int forwardOrBackward = -1;
+	
+	if (nearestDistance <= 1)
+	{
+		if (-15 <= directToObj || directToObj <= 15)
+		{
+			forwardOrBackward = -1;
+			Message("Nearest Object right infront, move backward "+m*forwardOrBackward);
+			move(m*forwardOrBackward);
+		}
+		
+		if (-165 >= directToObj || directToObj >= 165)
+		{
+			forwardOrBackward = 1;
+			Message("Nearest Object right behind, move forwards "+m*forwardOrBackward);
+			move(m*forwardOrBackward);
+		}
+	}
+}
+
+public point[] object::flatSpacesAroundCenter(point p, float flatmin, float radius, int numPoints)
+{
+	float angleIncrement = 360 / numPoints;
+	float angle;
+	point pj,p1,p2;
+	int i,j;
+	point[] points;
+	
+	j = 0;
+	
+	for(i = 0; i < numPoints; i++)
+	{
+		angle = angleIncrement * i;
+		p1.x = p.x + radius * cos(angle);
+		p1.y = p.y + radius * sin(angle);
+		p1.z = -1;
+		p1.z = topo(p1);
+		
+		pj = flatspace(p1,flatmin,0,2,1);
+		
+		if (topo(pj) >= 0 && flatground(pj,flatmin) >= (flatmin - 0.2))
+		{
+			if (j == 0)
+			{
+				points[j] = pj;
+				j++;
+			}
+			else
+			{
+				if (distance2d(pj,points[j-1]) > 9)
+				{
+					points[j] = pj;
+					j++;
+				}
+			}
+		}
+	}
+	
+	for(i = 0; i < numPoints; i++)
+	{
+		angle = angleIncrement * i;
+		p2.x = p.x + (radius + 12) * cos(angle);
+		p2.y = p.y + (radius + 12) * sin(angle);
+		p2.z = -1;
+		p2.z = topo(p2);
+		
+		pj = flatspace(p2,flatmin,0,2,1);
+		
+		if (topo(pj) >= 0 && flatground(pj,flatmin) >= (flatmin - 0.2))
+		{
+			if (j == 0)
+			{
+				points[j] = pj;
+				j++;
+			}
+			else
+			{
+				if (distance2d(pj,points[j-1]) > 9)
+				{
+					points[j] = pj;
+					j++;
+				}
+			}
+		}
+	}
+	return points;
+}
+
+public point object::flatSpace()
+{
+	SatCom com();
+	com.returnMessage = category+": flatSpace() start";
+	com.returnCode = 1;
+	
+	point p;
+	point empty(nan,nan,nan);
+	
+	if (com.nextPoint < sizeof(com.pointsAroundShip))
+	{
+		p = com.pointsAroundShip[com.nextPoint];
+		com.nextPoint = com.nextPoint + 1;
+		com.returnCode = 0;
+		return p;
+	}
+	else
+	{
+		Message("Could not find flatSpace");
+		com.returnCode = 1;
+	}
+	return empty;
+}
+
+public point object::getSpaceOnShip()
+{
+	object sp = radar(SpaceShip);
+	
+	//This basically creates a list of objects that can be on the ship
+	int obj[];
+	int i=0;
+	obj[i++] = TitaniumOre;
+	obj[i++] = UraniumOre;
+	obj[i++] = Titanium;
+	obj[i++] = PowerCell;
+	obj[i++] = NuclearCell;
+	obj[i++] = OrgaMatter;
+	obj[i++] = TNT;
+	obj[i++] = BlackBox;
+	obj[i++] = KeyA;
+	obj[i++] = KeyB;
+	obj[i++] = KeyC;
+	obj[i++] = KeyD;
+	obj[i++] = WheeledGrabber;
+	obj[i++] = TrackedGrabber;
+	obj[i++] = WingedGrabber;
+	obj[i++] = LeggedGrabber;
+	obj[i++] = WheeledShooter;
+	obj[i++] = TrackedShooter;
+	obj[i++] = WingedShooter;
+	obj[i++] = LeggedShooter;
+	obj[i++] = WheeledSniffer;
+	obj[i++] = TrackedSniffer;
+	obj[i++] = WingedSniffer;
+	obj[i++] = LeggedSniffer;
+	obj[i++] = WheeledOrgaShooter;
+	obj[i++] = TrackedOrgaShooter;
+	obj[i++] = WingedOrgaShooter;
+	obj[i++] = LeggedOrgaShooter;
+	obj[i++] = Subber;
+	obj[i++] = Recycler;
+	obj[i++] = Shielder;
+	obj[i++] = Thumper;
+	obj[i++] = PhazerShooter;
+	obj[i++] = Me;
+	
+	//This section specifies free spots on the ship (you know, the squares)
+	point[] spaces;
+	
+	spaces[0].x = sp.position.x - 3.5;
+	spaces[0].y = sp.position.y - 3.5;
+	spaces[0].z = sp.position.z + 7.5;
+	
+	spaces[1].x = sp.position.x - 3.5;
+	spaces[1].y = sp.position.y;
+	spaces[1].z = sp.position.z + 7.5;
+	
+	spaces[2].x = sp.position.x - 3.5;
+	spaces[2].y = sp.position.y + 3.5;
+	spaces[2].z = sp.position.z + 7.5;
+	
+	spaces[3].x = sp.position.x;
+	spaces[3].y = sp.position.y - 3.5;
+	spaces[3].z = sp.position.z + 7.5;
+	
+	spaces[4].x = sp.position.x;
+	spaces[4].y = sp.position.y + 3.5;
+	spaces[4].z = sp.position.z + 7.5;
+	
+	spaces[5].x = sp.position.x + 3.5;
+	spaces[5].y = sp.position.y - 3.5;
+	spaces[5].z = sp.position.z + 7.5;
+	
+	spaces[6].x = sp.position.x + 3.5;
+	spaces[6].y = sp.position.y;
+	spaces[6].z = sp.position.z + 7.5;
+	
+	spaces[7].x = sp.position.x + 3.5;
+	spaces[7].y = sp.position.y + 3.5;
+	spaces[7].z = sp.position.z + 7.5;
+	
+	object item;
+	
+	//We check if any of these is free by checking if any of listed objects is located in 2.5m radius
+	for (i = 0; i < 8; i++)
+	{
+		item = search(obj, spaces[i]);
+		if (distance2d(item.position, spaces[i]) > 2.5)
+		{
+			return spaces[i];
+		}
+	}
+	
+	//If all of them are taken, we return a point -1337, -1337
+	point empty(nan,nan,nan);
+	return empty;
+}
+
+public void object::Builder()
+{
+	SatCom com();
+	point p;
+	int c;
+	object shooter,grabber;
+	
+	wait(5);
+	
+	for (int i = 0; i < com.maxBuild; i++)
+	{
+		if (energyCell.energyLevel < 0.3)
+		{
+			p = position;
+			chargeCell();
+			go(p);
+		}
+		
+		Message("Wait to build next object");
+		while (!com.builderInUsed)
+		{
+			if (distance2Enemies(this.position) <= com.safeAnt)
+			{
+				go(space(position,20,40,4));
+				if (distance2d(position,location(SpaceShip)) < 25)
+				{
+					go(space(location(SpaceShip),35,60,4));
+				}
+			}
+			wait(2);
+		}
+		
+		shooter = radar(WingedOrgaShooter);
+		if(shooter == null)
+		{
+			shooter = radar(WingedShooter);
+		}
+		if(shooter == null)
+		{
+			shooter = radar(LeggedOrgaShooter);
+		}
+		if(shooter == null)
+		{
+			shooter = radar(LeggedShooter);
+		}
+		if(shooter == null)
+		{
+			camerafocus(this);
+		}
+		
+		p = com.buildPoint;
+		c = com.buildCategory;
+		Message("Building "+catName(c));
+		
+		if ((c == BotFactory || c == NuclearPlant || c == PowerStation || c == RepairCenter) && distance2d(p,location(SpaceShip)) < 30)
+		{
+			go(awayShipPoint(p));
+		}
+		
+		while (search(com.ALL_BOTS,p,0,8) != null)
+		{
+			wait(5);
+		}
+		go(p);
+		build(c);
+		
+		if (shooter == null)
+		{
+			grabber = radar(LeggedGrabber);
+			if (grabber == null)
+			{
+				grabber = radar(WheeledGrabber);
+			}
+			if (grabber == null)
+			{
+				grabber = radar(WingedGrabber);
+			}
+			if (grabber != null)
+			{
+				camerafocus(grabber);
+			}
+		}
+		
+		com.builderInUsed = false;
+		
+		if (c == BotFactory || c == NuclearPlant)
+		{
+			go(space(location(SpaceShip),35,60,10));
+		}
+		else
+		{
+			go(space(p,20,40,4));
+		}
+		
+		if (distance2d(position,location(SpaceShip)) < 25)
+		{
+			go(space(location(SpaceShip),35,60,10));
+		}
+	}
+	go(space(location(SpaceShip),35,60,10));
+	missionComplete();
+}
+
+public void object::Build(int c, point p)
+{
+	SatCom com();
+	
+	while (com.builderInUsed)
+	{
+		wait(5);
+	}
+	
+	if (!found(WingedBuilder))
+	{
+		produce(space(p,5,10,1),0,WingedBuilder,"Builder.cbot",1);
+		turn(direction(p));
+	}
+	
+	com.buildPoint = p;
+	com.buildCategory = c;
+	com.builderInUsed = true;
+}
+
+public void object::Build(int c)
+{
+	goGrab(Titanium);
+	moveObjToPlace(Titanium,flatSpace());
+	Build(c,location(Titanium));
+}
+
+public void object::Build(int c, string s)
+{
+	goGrab(Titanium);
+	
+	waitForAvailable(BotFactory);
+	moveObjToObj(Titanium,BotFactory);
+	
+	if (c == TrackedGrabber)
+	{
+		waitForResearch(ResearchTracked);
+	}
+	else if (c == WingedGrabber)
+	{
+		waitForResearch(ResearchWinged);
+	}
+	else if (c == LeggedGrabber)
+	{
+		waitForResearch(ResearchLegged);
+	}
+	
+	Message("Building "+catName(c));
+	factory(c,initProgram(s));
+}
+
+public float object::minSafeDistance(object o)
+{
+	float safedis = 25;
+	
+	if (o == null)
+	{
+		safedis = 0;
+	}
+	else
+	{
+		switch (o.category)
+		{
+			case GraviPlant: safedis = 25; break;
+			case AlienAnt: safedis = 50; break;
+			case AlienSpider: safedis = 50; break;
+			case AlienWorm: safedis = 50; break;
+			case AlienEgg: safedis = 50; break;
+			case AlienWasp: safedis = 50; break;
+			default: safedis = 10;
+		}
+	}
+	
+	return safedis;
+}
+
+public bool object::nearObstacles(point c)
+{
+	SatCom com();
+	
+	object nearestObstacle;
+	nearestObstacle = search(com.obstacles,c);
+	
+	if (nearestObstacle == null)
+	{
+		return false;
+	}
+	
+	if (distance2d(c, nearestObstacle.position) < 6)
+	{
+		return true;
+	}
+	return false;
+}
+
+public point object::randomFreePoint(point center, float minDistance, float maxDistance)
+{
+	point randomPoint = space(center,minDistance,maxDistance,4);
+	int maxAttempts = 100; // Limit the number of attempts to find a free point
+	
+	for (int i = 0; i < maxAttempts; i++)
+	{
+		// Generate a random distance within the specified range
+		float distance = minDistance + (maxDistance - minDistance) * rand();
+		// Generate a random angle
+		float angle = 360 * rand();
+		
+		// Calculate random X and Y coordinates based on the distance and angle
+		float x = center.x + distance * cos(angle);
+		float y = center.y + distance * sin(angle);
+		
+		// Set the Z coordinate using the terrain height
+		randomPoint.x = x;
+		randomPoint.y = y;
+		randomPoint.z = topo(randomPoint);
+		
+		// Check if the point is free
+		if (isFreePoint(randomPoint))
+		{
+			return randomPoint; // Return the first free point found
+		}
+	}
+	return space(center,minDistance,maxDistance,4);
+}
+
+public bool object::isFreePoint(point p)
+{
+	// Check for obstacles or other objects at the point
+	if (category == WheeledGrabber && distance2SpaceShip(p) < 20)
+	{
+		return false;
+	}
+	
+	if (flatground(p,2) < 0.5)
+	{
+		return false;
+	}
+	
+	object nearbyObject = search(Any,p,0,2);
+	if (nearbyObject != null)
+	{
+		return false;
+	}
+	return true;
+}
+
+public point object::freePoint(point c)
+{
+	return freePoint(c,6,36);
+}
+
+public point object::freePoint(point c, float radius, int numPoints)
+{
+	SatCom com();
+	
+	int i,j;
+	
+	float maxDistance = -1.0;
+	float distanceToObstacle;
+	object nearestObstacle;
+	point farthestPointToObstacle;
+	point p;
+	bool foundFreePoint;
+	float angleIncrement = 360 / numPoints;
+	float angle;
+	
+	nearestObstacle = search(com.obstacles,c);
+	if (nearestObstacle == null)
+	{
+		p.x = c.x;
+		p.y = c.y;
+		p.z = topo(c);
+		return p;
+	}
+	
+	if (distance2d(c, nearestObstacle.position) > radius)
+	{
+		p.x = c.x;
+		p.y = c.y;
+		p.z = topo(c);
+		return p;
+	}
+	
+	j = 0;
+	foundFreePoint = false;
+	for(i = 0; i < numPoints; i++)
+	{
+		angle = angleIncrement * i;
+		p.x = c.x + radius * cos(angle);
+		p.y = c.y + radius * sin(angle);
+		p.z = topo(p);
+		nearestObstacle = search(com.obstacles,p);
+		distanceToObstacle = distance2d(p, nearestObstacle.position);
+		if (distanceToObstacle > maxDistance && p.z > 1.5)
+		{
+			foundFreePoint = true;
+			maxDistance = distanceToObstacle;
+			j = i;
+			farthestPointToObstacle.x = p.x;
+			farthestPointToObstacle.y = p.y;
+			farthestPointToObstacle.z = p.z;
+		}
+	}
+	if (foundFreePoint)
+	{
+		return farthestPointToObstacle;
+	}
+	else
+	{
+		Message("Exception, not found freePoint");
+		p.x = c.x;
+		p.y = c.y;
+		p.z = topo(c);
+		return p;
+	}
+}
+
+public bool object::isValley(object o, object e)
+{
+	SatCom com();
+	
+	int numPoints = 36;
+	float angleIncrement = 360 / numPoints;
+	float angle,radius,targetTopo,minTopo,maxTopo,topoVal,eDist,minDist;
+	point target,p,minPoint,maxPoint,bestPoint;
+	
+	target = o.position;
+	targetTopo = topo(target);
+	radius = com.safeAnt;
+	
+	minTopo = 999999;
+	minPoint.x = 999999;
+	minPoint.y = 999999;
+	minPoint.z = 999999;
+	
+	maxTopo = -999999;
+	maxPoint.x = -999999;
+	maxPoint.y = -999999;
+	maxPoint.z = -999999;
+	
+	minDist = 999999;
+	bestPoint.x = 999999;
+	bestPoint.y = 999999;
+	bestPoint.z = 999999;
+	
+	for (int i = 0; i < numPoints; i++)
+	{
+		angle = angleIncrement * i;
+		p.x = target.x + radius * cos(angle);
+		p.y = target.y + radius * sin(angle);
+		topoVal = topo(p);
+		p.z = topoVal;
+		
+		if (topoVal < minTopo)
+		{
+			minPoint.x = p.x;
+			minPoint.y = p.y;
+			minPoint.z = p.z;
+			minTopo = topoVal;
+		}
+		
+		if (topoVal > maxTopo)
+		{
+			maxPoint.x = p.x;
+			maxPoint.y = p.y;
+			maxPoint.z = p.z;
+			maxTopo = topoVal;
+		}
+		
+		if (topoVal <= targetTopo)
+		{
+			eDist = distance2d(p,e.position);
+			if (eDist < minDist)
+			{
+				bestPoint.x = p.x;
+				bestPoint.y = p.y;
+				bestPoint.z = this.position.z;
+				minDist = eDist;
+			}
+			plantFlag(p,YellowFlag);
+		}
+		else
+		{
+			plantFlag(p,RedFlag);
+		}
+	}
+	
+	plantFlag(minPoint,GreenFlag);
+	plantFlag(maxPoint,BlueFlag);
+	com.returnPoint = bestPoint;
+	if (maxPoint.z > target.z + 10)
+	{
+		return true;
+	}
+	return false;
+}
+
+public point object::gunPoint(float d)
+{
+	point p;
+	if (category == WingedShooter || category == WingedOrgaShooter)
+	{
+		p = aheadPoint(d);
+		p.z = this.position.z + d;
+		return p;
+	}
+	p.x = this.position.x + d * cos(this.pitch) * cos(this.orientation);
+	p.y = this.position.y + d * cos(this.pitch) * sin(this.orientation);
+	p.z = this.position.z + d * sin(this.pitch);
+	if (topo(p) >= topo(this.position))
+	{
+		p.z = this.position.z + d;
+	}
+	return p;
+}
+
+public point object::gunPoint()
+{
+	return gunPoint(1.5);
+}
+
+public point object::aheadPoint(object o, float d, float angle)
+{
+	point h;
+	h.x = o.position.x + d*cos(o.orientation + angle);
+	h.y = o.position.y + d*sin(o.orientation + angle);
+	h.z = o.position.z;
+	return h;
+}
+
+public point object::aheadPoint(float d, float angle)
+{
+	point h;
+	h = aheadPoint(this, d, angle);
+	return h;
+}
+
+public point object::aheadPoint(float d)
+{
+	point h;
+	h = aheadPoint(d, 0);
+	return h;
+}
+
+public point object::behindPoint(float d)
+{
+	point h;
+	h = aheadPoint(d, 180);
+	return h;
+}
+
+public point object::aheadPoint(object o, float d)
+{
+	point h;
+	h = aheadPoint(o, d, 0);
+	return h;
+}
+
+public point object::behindPoint(object o, float d)
+{
+	point h;
+	h = aheadPoint(o, d, 180);
+	return h;
+}
+
+public point object::leftPoint(point p1)
+{
+	point p2,p3;
+	float d = 1;
+	p2 = this.position;
+	p3.x = p2.x - d*(p1.y - p2.y);
+	p3.y = p2.y + d*(p1.x - p2.x);
+	p3.z = this.position.z;
+	return p3;
+}
+
+public point object::leftPoint(point p1, point p2)
+{
+	point p3;
+	float d = 1;
+	p3.x = p2.x - d*(p1.y - p2.y);
+	p3.y = p2.y + d*(p1.x - p2.x);
+	p3.z = this.position.z;
+	return p3;
+}
+
+public point object::rightPoint(point p1)
+{
+	point p2,p3;
+	float d = 1;
+	p2 = this.position;
+	p3.x = p2.x + d*(p1.y - p2.y);
+	p3.y = p2.y - d*(p1.x - p2.x);
+	p3.z = this.position.z;
+	return p3;
+}
+
+public point object::rightPoint(point p1, point p2)
+{
+	point p3;
+	float d = 1;
+	p3.x = p2.x + d*(p1.y - p2.y);
+	p3.y = p2.y - d*(p1.x - p2.x);
+	p3.z = this.position.z;
+	return p3;
+}
+
+// Function to find the left point P3 given P1 and P2
+public point object::leftPoint(point p1, point p2, float dis)
+{
+	// Calculate the vector components from P1 to P2
+	float dx = p2.x - p1.x;
+	float dy = p2.y - p1.y;
+	
+	// Calculate the length of the vector P1P2
+	float length = distance(p1, p2);
+	
+	// Calculate the normalized perpendicular vectors
+	float perp1x = (dy / length) * dis;
+	float perp1y = (-dx / length) * dis;
+	float perp2x = (-dy / length) * dis;
+	float perp2y = (dx / length) * dis;
+	
+	// Calculate the two possible coordinates for P3
+	point p3_1(p2.x + perp1x, p2.y + perp1y,0);
+	point p3_2(p2.x + perp2x, p2.y + perp2y,0);
+	
+	p3_1.z = topo(p3_1);
+	p3_2.z = topo(p3_2);
+	
+	// Determine the left point
+	if ((dx * perp1y - dy * perp1x) > 0)
+	{
+		return p3_1;
+	}
+	else
+	{
+		return p3_2;
+	}
+}
+
+// Function to find the right point P3 given P1 and P2
+public point object::rightPoint(point p1, point p2, float dis)
+{
+	// Calculate the vector components from P1 to P2
+	float dx = p2.x - p1.x;
+	float dy = p2.y - p1.y;
+	
+	// Calculate the length of the vector P1P2
+	float length = distance2d(p1, p2);
+	
+	// Calculate the normalized perpendicular vectors
+	float perp1x = (dy / length) * dis;
+	float perp1y = (-dx / length) * dis;
+	float perp2x = (-dy / length) * dis;
+	float perp2y = (dx / length) * dis;
+	
+	// Calculate the two possible coordinates for P3
+	point p3_1(p2.x + perp1x, p2.y + perp1y,0);
+	point p3_2(p2.x + perp2x, p2.y + perp2y,0);
+	
+	p3_1.z = topo(p3_1);
+	p3_2.z = topo(p3_2);
+	
+	// Determine the right point
+	if ((dx * perp1y - dy * perp1x) > 0)
+	{
+		return p3_2;
+	}
+	else
+	{
+		return p3_1;
+	}
+}
+
+public void object::attack()
+{
+	SatCom com();
+	
+	if (category == WingedShooter || category == WingedOrgaShooter)
+	{
+		airAttack();
+	}
+	else
+	{
+		landAttack();
+	}
+}
+
+public void object::airAttack()
+{
+	SatCom com();
+	object enemy,root,center;
+	float dir,dis2Base,dis2Enemy,detectRange;
+	point p,last,start,left,right;
+	int i;
+	
+	errmode(0);
+	ipf(10000);
+	
+	center = this;
+	detectRange = 10000;
+	i = 0;
+	last = this.position;
+	while (true)
+	{
+		errmode(0);
+		checkSelfStatus();
+		errmode(0);
+		
+		if (com.detectedEgg && !com.detectedWasp)
+		{
+			if (radar(AlienWasp) != null)
+			{
+				com.detectedWasp = true;
+			}
+		}
+		
+		enemy = search(com.ants,center.position,0,detectRange);
+		if (enemy == null && com.detectedWasp)
+		{
+			enemy = search(AlienWasp,center.position,0,detectRange);
+		}
+		else if (enemy == null && com.detectedWorm)
+		{
+			enemy = Radar(AlienWorm);
+		}
+		
+		if (enemy != null)
+		{
+			if (enemy.category == AlienWorm && topo(enemy.position) < 0)
+			{
+				Message("Target is underwater, wait for next target");
+				continue;
+			}
+			
+			if (com.detectedGraviPlant)
+			{
+				root = search(GraviPlant,enemy.position,0,com.attackRange);
+				if (root != null)
+				{
+					if (distance2d(this.position,root.position) > com.safeAnt && distance2d(this.position,root.position) < distance2d(this.position,enemy.position))
+					{
+						left = leftPoint(this.position,root.position,com.safeAnt);
+						right = rightPoint(this.position,root.position,com.safeAnt);
+						if (distance2d(left,enemy.position) < distance2d(right,enemy.position))
+						{
+							p = left;
+						}
+						else
+						{
+							p = right;
+						}
+						fly(p);
+						wait(1);
+						continue;
+					}
+				}
+			}
+			
+			i++;
+			moveAndDestroy(enemy);
+			if (isStuck(last))
+			{
+				if (i > 10)
+				{
+					Message("Avoiding obstacle");
+					motor(0,0);
+					jet(1);
+					wait(1);
+					motor(-1,-1);
+					wait(1);
+					turn(45);
+					motor(1,1);
+					wait(1);
+					i = 0;
+					last = this.position;
+				}
+			}
+			else
+			{
+				i = 0;
+				last = this.position;
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+	
+	gotoSafeLZ();
+	missionComplete();
+	errmode(1);
+}
+
+public void object::moveAndDestroy(object target)
+{
+	errmode(0);
+	
+	SatCom com();
+	
+	object enemies[],o;
+	float dir;    // direction of target from shooter
+	float dis;    // distance of target from shooter
+	float dif;    // difference in altitude of target & shooter (relative to sea-level)
+	float ang;    // angle shooter must aim (-20 degrees favorable)
+	point p,left,right,sensor;
+	
+	fly(target.position);
+	
+	if (com.detectedGraviPlant)
+	{
+		o = radar(com.roots,0,180,0,3);
+		if (o != null)
+		{
+			if (distance(this.position,o.position) <= 3)
+			{
+				Message("Near to AlienRoot");
+				//turn(direction(o.position));
+				while (distance2d(this.position,o.position) <= 6)
+				{
+					motor(-1,-1);
+					jet(0.2);
+					if  (radar(com.roots,180,90,0,3) != null)
+					{
+						motor(0,0);
+						jet(1);
+						break;
+					}
+				}
+			}
+		}
+	}
+	
+	// check how many enemies around, exclude wasp
+	enemies = radarall(com.ants,0,360,0,com.attackRange);
+	if (sizeof(enemies) >= 3)
+	{
+		Message("Too many enemies. Stop moving forward and attack immediately");
+		motor(0,0);
+		airFire(target);
+		return;
+	}
+	
+	// check how near to Spider
+	if (distance2Spider(this.position) < com.safeRoot)
+	{
+		Message("Too near to Spider. Pull back and attack immediately");
+		while (distance2Spider(this.position) <= com.safeRoot)
+		{
+			motor(-1,-1);
+			jet(0.2);
+		}
+		motor(0,0);
+		airFire(target);
+		return;
+	}
+	
+	// check how near to enemies, exclude wasp
+	if (distance2Ants(this.position) < 10)
+	{
+		Message("Too near to enemy. Pull back and attack immediately");
+		while (distance2Ants(this.position) <= 10)
+		{
+			motor(-1,-1);
+			jet(0.2);
+		}
+		motor(0,0);
+		airFire(target);
+		return;
+	}
+	
+	dis = distance(this.position,target.position);
+	
+	//if (dis <= com.attackRange && -15 <= dir && dir <= 15)   // if within range
+	if (dis <= com.attackRange)   // if within range
+	{
+		if (!checkLOS(target))
+		{
+			left = leftPoint(target.position);
+			right = rightPoint(target.position);
+			
+			//left.z = position.z + 1.5;
+			//right.z = position.z + 1.5;
+			
+			if (checkLOS(left,target.position) && topo(left) < left.z)
+			{
+				Message("No clear view, can not shoot. Fly to left side of target");
+				//fly2p(left);
+				fly(left);
+				wait(1);
+				return;
+			}
+			else if (checkLOS(right,target.position) && topo(right) < right.z)
+			{
+				Message("No clear view, can not shoot. Fly to right side of target");
+				//fly2p(right);
+				fly(right);
+				wait(1);
+				return;
+			}
+			else
+			{
+				Message("No clear view, can not shoot. Fly higher");
+				//gotoSafeLZ();
+				jet(1);
+				wait(1);
+				return;
+			}
+		}
+		motor(0,0);
+		airFire(target);
+	}
+	else
+	{
+		aim(0,0);
+	}
+}
+
+public void object::airFire(object target)
+{
+	errmode(0);
+	
+	SatCom com();
+	
+	float dir,angle;
+	int i;
+	
+	if (target == null || target.dead || distance2d(this.position,target.position) > com.attackRange)
+	{
+		return;
+	}
+	
+	i = 0;
+	do
+	{
+		i++;
+		angle = -atan2(this.position.z - target.position.z,distance(this.position,target.position)) - this.pitch;
+		if (angle > com.maxAimAngle)
+		{
+			jet(0.35);
+		}
+		else if (angle < com.minAimAngle)
+		{
+			jet(-0.4);
+		}
+	}
+	while (angle < com.minAimAngle || angle > com.maxAimAngle);
+		
+	jet(0);
+	dir = direction(target.position);
+	angle = -atan2(this.position.z - target.position.z,distance(this.position,target.position)) - this.pitch;
+	if (dir > 40)
+	{
+		turn(dir - 40);
+	}
+	else if(dir < -40)
+	{
+		turn(dir + 40);
+	}
+	aim(angle,-dir);
+	if (target != null && !target.dead)
+	{
+		fire(0.05);
+		wait(0.1);
+	}
+}
+
+public bool object::checkLOS(object target)
+{
+	return checkLOS(gunPoint(),target.position);
+}
+
+public bool object::checkLOS(point target)
+{
+	return checkLOS(gunPoint(),target);
+}
+
+public bool object::checkLOS(point bot_position, point ant_position)
+{
+	SatCom com();
+	
+	if (!com.checkLOS || com.detectedWorm)
+	{
+		return true;
+	}
+	
+	float total_distance = distance(bot_position, ant_position);
+	
+	// Calculate the direction vector from the bot to the ant
+	float dx = (ant_position.x - bot_position.x) / total_distance;
+	float dy = (ant_position.y - bot_position.y) / total_distance;
+	float dz = (ant_position.z - bot_position.z) / total_distance;
+	point p;
+	int d;
+	
+	if (category == WingedOrgaShooter || category == LeggedOrgaShooter)
+	{
+		d = total_distance - 4;
+	}
+	else
+	{
+		d = total_distance - 2;
+	}
+	
+	// Loop through every meter from bot position to ant position
+	for (int i = 0; i < d; i++)
+	{
+		p.x = bot_position.x + i * dx;
+		p.y = bot_position.y + i * dy;
+		p.z = bot_position.z + i * dz;
+		
+		if (category == LeggedOrgaShooter)
+		{
+			if (topo(p) > p.z + 0.5)
+			{
+				return false;
+			}
+		}
+		else
+		{
+			if (topo(p) > p.z + 0.1)
+			{
+				return false;
+			}
+		}
+	}
+	return true;
+}
+
+public void object::checkSelfStatus()
+{
+	SatCom com();
+	
+	if (this.temperature > com.temperatureThreshold)
+	{
+		aim(0,0);
+		gotoSafeLZ();
+	}
+	
+	if (this.energyCell.energyLevel < com.energyThreshold)
+	{
+		aim(0,0);
+		chargeCell();
+		if (this.shieldLevel < com.shieldThreshold)
+		{
+			repair();
+		}
+	}
+	
+	if (this.shieldLevel < com.shieldThreshold)
+	{
+		aim(0,0);
+		repair();
+		if (this.energyCell.energyLevel < com.energyThreshold)
+		{
+			chargeCell();
+		}
+	}
+}
+
+public void object::gotoSafeLZ(object o)
+{
+	SatCom com();
+	
+	object bot;
+	point botPos;
+	int numPoints = 36;
+	float angleIncrement = 360 / numPoints;
+	float angle;
+	
+	bot = this;
+	botPos = aheadPoint(15);
+	
+	float topoVal = topo(botPos);
+	float groundVal = flatground(botPos,3);
+	
+	if (topoVal >= com.safeTopo && groundVal >= com.safeFlatGround && distance2Enemies(botPos) >= com.safeAnt)
+	{
+		plantFlag(botPos,GreenFlag);
+		landAndRest(botPos);
+		return;
+	}
+	
+	float radius = 5;
+	while (true)
+	{
+		point bestPoint(0, 0, 0);
+		float minDistToObject = 999999;
+		for (int i = 0; i < numPoints; i++)
+		{
+			angle = angleIncrement * i;
+			point p;
+			p.x = botPos.x + radius * cos(angle);
+			p.y = botPos.y + radius * sin(angle);
+			float topoVal = topo(p);
+			p.z = topoVal;
+			if (topoVal >= com.safeTopo)
+			{
+				float groundVal = flatground(p,3);
+				if (groundVal >= com.safeFlatGround)
+				{
+					if (distance2Enemies(p) >= com.safeAnt)
+					{
+						float distToObject = distance2d(p,o.position);
+						if (distToObject < minDistToObject)
+						{
+							bestPoint.x = p.x;
+							bestPoint.y = p.y;
+							bestPoint.z = p.z;
+							minDistToObject = distToObject;
+						}
+						plantFlag(p,YellowFlag);
+					}
+					else
+					{
+						plantFlag(p,RedFlag);
+					}
+				}
+				else
+				{
+					plantFlag(p,RedFlag);
+				}
+			}
+		}
+		
+		if (minDistToObject < 999999)
+		{
+			landAndRest(bestPoint);
+			return;
+		}
+		radius += 5;
+	}
+}
+
+public void object::gotoSafeLZ()
+{
+	gotoSafeLZ(this);
+}
+
+public float object::speed(point p)
+{
+	float botTopo, pTopo, speed = 0;
+	
+	botTopo = topo(this.position);
+	pTopo = topo(p);
+	
+	if (botTopo - pTopo > 0.5)
+	{
+		speed = 1;
+	}
+	else if (0.1 < botTopo - pTopo && botTopo - pTopo < 0.5)
+	{
+		speed = 0.5;
+	}
+	else if (pTopo - botTopo > 0.5)
+	{
+		speed = -1;
+	}
+	else if (0.1 < pTopo - botTopo && pTopo - botTopo < 0.5)
+	{
+		speed = -0.5;
+	}
+	else
+	{
+		speed = 0;
+	}
+	
+	return speed;
+}
+
+public void object::landAndRest(point p)
+{
+	SatCom com();
+	
+	object enemy;
+	point ahead,behind,left,right;
+	float d = 1.5;
+	
+	plantFlag(p,GreenFlag);
+	
+	fly2p(p);
+	
+	while (this.temperature > 0.02)
+	{
+		if (this.altitude > 0)
+		{
+			if (distance2d(this.position,p) > 5)
+			{
+				motor(1,1);
+			}
+			else
+			{
+				motor(0,0);
+			}
+			jet(-0.9);
+		}
+		if (this.altitude == 0)
+		{
+			behind = behindPoint(d);
+			left = leftPoint(this.position,behind);
+			right = rightPoint(this.position,behind);
+			motor(speed(left),speed(right));
+		}
+		enemy = radar(com.ants,0,360,0,com.attackRange);
+		if (enemy != null)
+		{
+			motor(0,0);
+			airFire(enemy);
+		}
+	}
+}
+
+public void object::airGuard(object center, float radius)
+{
+	SatCom com();
+	object enemy,root;
+	float dir,dis2Base,dis2Enemy,detectRange;
+	point p,last,start,left,right;
+	int i;
+	
+	errmode(0);
+	ipf(10000);
+	
+	if (center == null)
+	{
+		attack();
+		return;
+	}
+	
+	start = getRestPoint(center,radius/2);
+	detectRange = 10000;
+	
+	i = 0;
+	last = this.position;
+	while (true)
+	{
+		if (center == null)
+		{
+			attack();
+			break;
+		}
+		
+		errmode(0);
+		checkSelfStatus(center,radius);
+		errmode(0);
+		
+		if (com.detectedEgg && !com.detectedWasp)
+		{
+			if (radar(AlienWasp) != null)
+			{
+				com.detectedWasp = true;
+			}
+		}
+		
+		enemy = search(com.ants,center.position,0,detectRange);
+		if (enemy == null && com.detectedWasp)
+		{
+			enemy = search(AlienWasp,center.position,0,detectRange);
+		}
+		else if (enemy == null && com.detectedWorm)
+		{
+			enemy = Radar(AlienWorm);
+		}
+		
+		if (enemy != null)
+		{
+			if (enemy.category == AlienWorm && topo(enemy.position) < 0)
+			{
+				Message("Target is underwater, wait for next target");
+				continue;
+			}
+			
+			if (com.detectedGraviPlant)
+			{
+				root = search(GraviPlant,enemy.position,0,com.attackRange);
+				if (root != null)
+				{
+					if (distance2d(this.position,root.position) > com.safeAnt && distance2d(this.position,root.position) < distance2d(this.position,enemy.position))
+					{
+						left = leftPoint(this.position,root.position,com.safeAnt);
+						right = rightPoint(this.position,root.position,com.safeAnt);
+						if (distance2d(left,enemy.position) < distance2d(right,enemy.position))
+						{
+							p = left;
+						}
+						else
+						{
+							p = right;
+						}
+						fly(p);
+						wait(1);
+						continue;
+					}
+				}
+			}
+			
+			i++;
+			moveAndDestroy(enemy);
+			if (isStuck(last))
+			{
+				if (i > 10)
+				{
+					Message("Avoiding obstacle");
+					motor(0,0);
+					jet(1);
+					wait(1);
+					motor(-1,-1);
+					wait(1);
+					turn(45);
+					motor(1,1);
+					wait(1);
+					i = 0;
+					last = this.position;
+				}
+			}
+			else
+			{
+				i = 0;
+				last = this.position;
+			}
+			
+			if (found(PowerCaptor))
+			{
+				if (distance2d(this.position,center.position) > radius && distance2d(this.position,location(PowerCaptor)) > 50)
+				{
+					motor(0,0);
+					airFire(enemy);
+				}
+			}
+			else
+			{
+				if (distance2d(this.position,center.position) > radius)
+				{
+					if (center.category == SpaceShip)
+					{
+						motor(0,0);
+						airFire(enemy);
+					}
+					else
+					{
+						fly(center.position);
+					}
+				}
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+	
+	landAndRest(start);
+	missionComplete();
+	errmode(1);
+}
+
+public point object::getRestPoint(object center, float radius)
+{
+	SatCom com();
+	point p,bestPoint,flatSpaces[];
+	float dis,minDis;
+	
+	if (center.category == SpaceShip)
+	{
+		flatSpaces = com.pointsAroundShip;
+	}
+	else
+	{
+		flatSpaces = flatSpacesAroundCenter(center.position,1,radius,36);
+	}
+	
+	minDis = 999999;
+	for (int i = 0; i < sizeof(flatSpaces); i++)
+	{
+		p = flatSpaces[i];
+		if (isFreePoint(p))
+		{
+			dis = distance2d(this.position,p);
+			if (dis < minDis)
+			{
+				bestPoint = p;
+				minDis = dis;
+			}
+		}
+	}
+	
+	return bestPoint;
+}
+
+public void object::checkSelfStatus(object center, float radius)
+{
+	SatCom com();
+	
+	point restPoint;
+	
+	if (this.temperature > com.temperatureThreshold)
+	{
+		aim(0,0);
+		if (center == null)
+		{
+			gotoSafeLZ();
+		}
+		else
+		{
+			if (center.category == SpaceShip)
+			{
+				restPoint = getRestPoint(center,radius/2);
+				landAndRest(restPoint);
+			}
+			else
+			{
+				gotoSafeLZ(center);
+			}
+		}
+	}
+	
+	if (this.energyCell.energyLevel < com.energyThreshold)
+	{
+		aim(0,0);
+		chargeCell();
+		if (this.shieldLevel < com.shieldThreshold)
+		{
+			repair();
+		}
+	}
+	
+	if (this.shieldLevel < com.shieldThreshold)
+	{
+		aim(0,0);
+		if (com.repairQueue.isEmpty())
+		{
+			repair();
+			if (this.energyCell.energyLevel < com.energyThreshold)
+			{
+				chargeCell();
+			}
+		}
+	}
+}
+
+public void object::serviceTowers()
+{
+	SatCom com();
+	
+	object towers[],o;
+	point p;
+	bool lowEnergy;
+	
+	p = flatspace(location(PowerStation),0.5,15,25,1);
+	
+	chargeCell();
+	go(p);
+	
+	towers = radarall(DefenseTower);
+	lowEnergy = false;
+	while (true)
+	{
+		if (lowEnergy)
+		{
+			chargeCell();
+			go(p);
+		}
+		else
+		{
+			wait(5);
+		}
+		
+		towers = radarall(DefenseTower);
+		lowEnergy = false;
+		for (int i = 0; i < sizeof(towers); i++)
+		{
+			o = towers[i];
+			if (o.energyCell != null && o.energyCell.energyLevel < com.energyThreshold)
+			{
+				go(o);
+				while (distance2Wasp(position) < com.safeAnt)
+				{
+					wait(2);
+				}
+				switchCell();
+				lowEnergy = true;
+				break;
+			}
+		}
+	}
+}
+
+public void object::landAttack()
+{
+	SatCom com();
+	
+	float dir,targetOri;
+	float dis;
+	float dif;
+	float cPitch,angle = 0;
+	point p,last,left,right,front,back;
+	object o,target,enemies[];
+	int i;
+	
+	errmode(0);
+	
+	i = 0;
+	last = position;
+	aim(0,0);
+	while (true)
+	{
+		errmode(0);
+		checkSelfStatus();
+		errmode(0);
+		
+		target = radar(com.ants);
+		
+		if (target != null)
+		{
+			o = radar(Any,0,140,1.5,12);
+			if (o == null)
+			{
+				o = radar(Any,0,90,1.5,5);
+			}
+			if (o != null && o.category != target.category && distance2d(this.position,target.position) > com.safeAnt)
+			{
+				turn(direction(o.position));
+				motor(-1,-1);
+				wait(1);
+				turn(45);
+				motor(1,1);
+				wait(2);
+			}
+			
+			i++;
+			crawl(target.position);
+			// check if stuck
+			if (distance(this.position,last) <= 0.05)
+			{
+				if (i > 10)
+				{
+					Message("Being stuck at current position, try other way");
+					motor(-1,-1);
+					wait(1);
+					turn(45);
+					motor(1,1);
+					wait(2);
+					i = 0;
+					last = this.position;
+				}
+			}
+			else
+			{
+				i = 0;
+				last = this.position;
+			}
+			
+			// check how many enemies, exclude wasp
+			enemies = radarall(com.ants,0,360,0,com.attackRange);
+			if (sizeof(enemies) >= 3)
+			{
+				//Message("Too many enemies ahead. Update target to nearest enemy");
+				target = radar(com.ants);
+			}
+			
+			dis = distance(this.position,target.position);
+			
+			//if (dis <= com.attackRange && -21 < angle && angle < 21)
+			if (dis <= com.attackRange)
+			{
+				if (!checkLOS(target.position))
+				{
+					left = leftPoint(target.position);
+					right = rightPoint(target.position);
+					//left.z = topo(left) + 1.5;
+					//right.z = topo(right) + 1.5;
+					left.z = topo(left);
+					right.z = topo(right);
+					
+					if (checkLOS(left,target.position))
+					{
+						crawl(left);
+						if (!checkLOS(target.position))
+						{
+							continue;
+						}
+						/*
+						Message("No clear view, can not shoot. Crawl to left side of target");
+						turn(75);
+						motor(1,1);
+						wait(0.4);
+						if (!checkLOS(target.position))
+						{
+							turn(direction(target.position));
+							continue;
+						}
+						*/
+					}
+					else if (checkLOS(right,target.position))
+					{
+						crawl(right);
+						if (!checkLOS(target.position))
+						{
+							continue;
+						}
+						/*
+						Message("No clear view, can not shoot. Crawl to right side of target");
+						turn(-75);
+						motor(1,1);
+						wait(0.4);
+						if (!checkLOS(target.position))
+						{
+							turn(direction(target.position));
+							continue;
+						}
+						*/
+					}
+					else
+					{
+						//Message("No clear view, can not shoot. Crawl forward target");
+						continue;
+					}
+				}
+				motor(0,0);
+				landFire(target);
+			}
+			else
+			{
+				aim(0,0);
+			}
+		}
+		else
+		{
+			break;
+		}
+	}
+	missionComplete();
+	errmode(1);
+}
+
+public void object::landFire(object target)
+{
+	errmode(0);
+	SatCom com();
+	
+	float dis,dir,targetOri,cPitch,angle;
+	point front,back;
+	
+	dis = distance(this.position,target.position);
+	dir = direction(target.position);
+	targetOri = this.orientation + dir;
+	front.x = this.position.x + cos(targetOri);
+	front.y = this.position.y + sin(targetOri);
+	back.x = this.position.x - cos(targetOri);
+	back.y = this.position.y - sin(targetOri);
+	cPitch = atan2(topo(front) - topo(back),2);
+	angle = atan2(target.position.z - this.position.z - 2,dis) - cPitch;
+	if (dir > 40)
+	{
+		turn(dir - 40);
+	}
+	else if(dir < -40)
+	{
+		turn(dir + 40);
+	}
+	aim(angle,-dir);
+	if (target != null && !target.dead)
+	{
+		fire(0.05);
+		wait(0.1);
+	}
+}
+
+public void object::landGuard(object center,float radius)
+{
+	SatCom com();
+	
+	float detectRange = com.safeAnt + radius;
+	
+	float dir,targetOri;
+	float dis;
+	float dif;
+	float cPitch,angle = 0;
+	point p,last,left,right,front,back;
+	object o,enemy;
+	int i;
+	
+	errmode(0);
+	
+	i = 0;
+	last = this.position;
+	aim(0,0);
+	while (true)
+	{
+		errmode(0);
+		checkSelfStatus();
+		errmode(0);
+		
+		if (center == null)
+		{
+			landAttack();
+			break;
+		}
+		
+		enemy = search(com.ants,center.position,0,detectRange);
+		
+		if (enemy != null)
+		{
+			o = radar(Any,0,140,1.5,12);
+			if (o == null)
+			{
+				o = radar(Any,0,90,1.5,5);
+			}
+			if (o != null && o.category != center.category && o.category != enemy.category && distance2d(this.position,enemy.position) > com.safeAnt)
+			{
+				turn(direction(o.position));
+				motor(-1,-1);
+				wait(1);
+				turn(45);
+				motor(1,1);
+				wait(2);
+			}
+			
+			i++;
+			crawl(enemy.position);
+			if (distance(this.position,last) <= 0.03)
+			{
+				if (i > 10)
+				{
+					Message("Being stuck at current position, try other way");
+					motor(-1,-1);
+					wait(1);
+					turn(45);
+					motor(1,1);
+					wait(2);
+					i = 0;
+					last = this.position;
+				}
+			}
+			else
+			{
+				i = 0;
+				last = this.position;
+			}
+			
+			dis = distance2d(this.position,enemy.position);
+			dir = direction(enemy.position);
+			targetOri = this.orientation + dir;
+			front.x = this.position.x + cos(targetOri);
+			front.y = this.position.y + sin(targetOri);
+			back.x = this.position.x - cos(targetOri);
+			back.y = this.position.y - sin(targetOri);
+			cPitch = atan2(topo(front) - topo(back), 2);
+			angle = atan2(enemy.position.z - this.position.z - 2, dis) - cPitch;
+			
+			if (dis <= 5 || (dis <= com.attackRange && -21 < angle && angle < 21 && -15 <= dir && dir <= 15 && checkLOS(enemy.position)))
+			{
+				turn(direction(enemy.position));
+				atan2(enemy.position.z - this.position.z - 2, dis) - cPitch;
+				aim(angle, -direction(enemy.position));
+				if (enemy != null && !enemy.dead)
+				{
+					fire(0.05);
+					wait(0.1);
+				}
+			}
+		}
+		else
+		{
+			o = radar(Any,0,140,1.5,12);
+			if (o == null)
+			{
+				o = radar(Any,0,90,1.5,5);
+			}
+			if (o != null && o.category != center.category && o.category != AlienAnt)
+			{
+				turn(direction(o.position));
+				motor(-1,-1);
+				wait(1);
+				turn(45);
+				motor(1,1);
+				wait(2);
+			}
+			
+			front = aheadPoint(center,radius,0);
+			right = rightPoint(front,center.position);
+			
+			i++;
+			if (distance2d(this.position,right) > 0.5)
+			{
+				crawl(right);
+			}
+			else
+			{
+				motor(0,0);
+			}
+			
+			if (distance(this.position,last) <= 0.03)
+			{
+				if (i > 10)
+				{
+					Message("Being stuck at current position, try other way");
+					motor(-1,-1);
+					wait(1);
+					turn(45);
+					motor(1,1);
+					wait(2);
+					i = 0;
+					last = this.position;
+				}
+			}
+			else
+			{
+				i = 0;
+				last = this.position;
+			}
+		}
+	}
+	errmode(1);
+}
