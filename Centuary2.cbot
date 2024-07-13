@@ -1,22 +1,29 @@
 extern void object::Centuary2()
 {
-	object[] platforms = radarall(GoalArea);
-	for(int i = 0; i < sizeof(platforms); i++)
+	SatCom com();
+	
+	errmode(0);
+	
+	object target;
+	while (true)
 	{
-		goto(platforms[i].position);
-		object item = radar(TargetBot);
-		do
+		target = radar(TargetBot);
+		
+		if (target != null)
 		{
-			float dir = direction(item.position);
-			float angle = acos(distance2d(this.position, item.position)/distance(this.position, item.position));
-			if(dir > 40) turn(dir - 40);
-			else if(dir < -40) turn(dir + 40);
-			aim(angle, -dir);
-			fire(0.1);
-			wait(1);
-			item = radar(TargetBot, 0, 360, 0, 40);
+			crawl(target.position);
+			if (target != null && distance2d(position,target.position) <= com.attackRange)
+			{
+				aimAndFire(target);
+			}
 		}
-		while (item != null);
+		else
+		{
+			aim(0,0);
+			break;
+		}
 	}
+	go(SpaceShip);
+	missionComplete();
 	takeoff();
 }
