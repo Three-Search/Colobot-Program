@@ -26,16 +26,6 @@ public void object::Mission()
 {
 	SatCom com();
 	
-	com.safeTopo = 0;
-	com.safeFlatGround = 0;
-	com.temperatureThreshold = 0.6; // 0.55
-	com.energyThreshold = 0.4; // 0.45
-	//com.shieldThreshold = 0.70;
-	com.checkLOS = false;
-	//com.minAimAngle = -19;
-	//com.maxAimAngle = -5;
-	//com.plantFlag = true;
-	
 	attack();
 	landAndRest(position);
 	missionComplete();

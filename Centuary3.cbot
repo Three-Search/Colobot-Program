@@ -29,7 +29,7 @@ extern void object::Centuary3()
 	go(cell);
 	switchCell();
 	grab();
-	loadNuclearCell(WingedOrgaShooter);
+	moveObjToObj(NuclearCell,WingedOrgaShooter);
 	
 	Build(RadarStation);
 	

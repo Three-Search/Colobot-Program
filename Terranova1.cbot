@@ -1,0 +1,356 @@
+extern void object::Terranova1()
+{
+	SatCom com();
+	
+	com.builderCameraFocus = false;
+	
+	object o;
+	point p,p1,p2,p3,p4,sp,converterPoint,researchPoint,start,start1,left,right,derrickPoint,nuclearPlantPoint,defensePoint,flatSpaces[];
+	float dir,dis,minDis,maxDis;
+	
+	o = radar(731);
+	p1 = aheadPoint(o,30,-30);
+	p2 = flatspace(p1,5,0,60,4);
+	
+	sp = location(SpaceShip);
+	flatSpaces = flatSpacesAroundCenter(p1,3,10,360);
+	minDis = 999999;
+	maxDis = -999999;
+	for (int i = 0; i < sizeof(flatSpaces); i++)
+	{
+		p = flatSpaces[i];
+		dis = distance2d(p,sp);
+		if (dis < minDis)
+		{
+			p3 = p;
+			minDis = dis;
+		}
+		if (dis > maxDis)
+		{
+			p4 = p;
+			maxDis = dis;
+		}
+		
+	}
+	
+	com.points[0] = p1; //Derrick
+	com.points[1] = p2; //NuclearPlant
+	com.points[2] = p3; //DefenseTower
+	com.points[3] = p4; //DefenseTower
+	
+	start = this.position;
+	start1 = rightPoint(aheadPoint(6));
+	left = leftPoint(aheadPoint(15));
+	right = rightPoint(aheadPoint(25));
+	dir = this.orientation;
+	p = aheadPoint(this,48,100);
+	
+	goGrab(Titanium);
+	turn(90);
+	move(5);
+	go(p);
+	drop();
+	Build(DefenseTower,location(Titanium));
+	go(left);
+	goGrab(PowerCell);
+	turn(90);
+	move(5);
+	moveObjToObj(PowerCell,DefenseTower);
+	go(left);
+	goGrab(Titanium);
+	move(-5);
+	Build(BotFactory);
+	go(left);
+	goGrab(Titanium);
+	move(-5);
+	Build(Converter);
+	go(right);
+	go(start1);
+	goGrab(Titanium);
+	move(-5);
+	Build(ResearchCenter);
+	o = Radar(PowerStation);
+	go(o);
+	moveObjToObj(PowerCell,ResearchCenter);
+	research(ResearchShielder);
+	
+	go(right);
+	go(start1);
+	goGrab(PowerCell);
+	move(-15);
+	drop(Behind);
+	go(right);
+	go(start1);
+	goGrab(PowerCell);
+	move(-15);
+	turn(-90);
+	drop();
+	go(right);
+	go(start1);
+	goGrab(Titanium);
+	turn(180);
+	move(5);
+	Build(Subber,"Mission()");
+	moveObjToObj(PowerCell,Subber);
+	go(right);
+	go(start1);
+	goGrab(Titanium);
+	turn(180);
+	move(5);
+	Build(LeggedGrabber,"Mission()");
+	go(Converter);
+	goGrab(PowerCell);
+	moveObjToObj(PowerCell,LeggedGrabber);
+	go(ResearchCenter);
+	grab();
+	chargeCell();
+	go(com.pointsAroundShip[com.nextPoint]);
+	turn(direction(com.points[2]));
+	move(5);
+	waitForAvailable(DefenseTower,com.points[2]);
+	moveObjToObj(PowerCell,DefenseTower);
+	turn(-90);
+	move(5);
+	while (search(PowerCell,com.points[3],0,30) == null)
+	{
+		wait(5);
+	}
+	moveObjToObj(PowerCell,DefenseTower);
+	turn(-90);
+	move(5);
+	
+	waitForAvailable(NuclearPlant);
+	waitForAvailable(UraniumOre);
+	go(Derrick);
+	grab();
+	moveObjToObj(UraniumOre,NuclearPlant);
+	wait(40);
+	go(NuclearPlant);
+	grab();
+	go(space(this.position,10,30,4));
+	drop();
+	
+	waitForAvailable(UraniumOre);
+	go(Derrick);
+	grab();
+	moveObjToObj(UraniumOre,NuclearPlant);
+	wait(40);
+	go(NuclearPlant);
+	grab();
+	go(space(this.position,10,30,4));
+	drop();
+	
+	while (search(Subber,location(Derrick),0,30) == null)
+	{
+		wait(10);
+	}
+	
+	goGrab(NuclearCell);
+	go(Subber);
+	switchCell(Subber);
+	move(-7);
+	
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == Subber)
+	{
+		SubberMission();
+	}
+	else if (category == LeggedGrabber)
+	{
+		GrabberMission();
+	}
+	else if (category == Shielder)
+	{
+		ShieldMission();
+	}
+	else
+	{
+		ShootMission();
+	}
+}
+public void object::GrabberMission()
+{
+	SatCom com();
+	object o,b;
+	point p;
+	
+	b = radar(BotFactory);
+	p = aheadPoint(b,10,0);
+	go(SpaceShip);
+	goGrab(PowerCell);
+	o = radar(DefenseTower);
+	go(o);
+	camerafocus(radar(Subber));
+	while (true)
+	{
+		if (o.energyCell != null && o.energyCell.energyLevel < com.energyThreshold)
+		{
+			while (distance2Enemies(position) < com.safeAnt)
+			{
+				wait(2);
+			}
+			switchCell(DefenseTower);
+			chargeCell();
+			go(o);
+		}
+		
+		if (search(NuclearCell,p,0,2) != null)
+		{
+			go(space(position,20,30,4));
+			drop();
+			moveObjToObj(NuclearCell,Shielder);
+			goGrab(PowerCell);
+			go(o);
+		}
+		wait(10);
+	}
+}
+
+public void object::SubberMission()
+{
+	SatCom com();
+	
+	object o;
+	point p;
+	
+	go(TitaniumOre);
+	grab();
+	go(Converter);
+	drop();
+	move(-3);
+	waitForAvailable(Titanium,location(Converter));
+	go(Titanium);
+	grab();
+	chargeCell();
+	p = com.points[2];
+	go(p);
+	drop();
+	Build(DefenseTower,location(Titanium));
+	chargeCell();
+	
+	go(TitaniumOre);
+	grab();
+	go(Converter);
+	drop();
+	move(-3);
+	waitForAvailable(Titanium,location(Converter));
+	go(Titanium);
+	grab();
+	chargeCell();
+	p = com.points[3];
+	go(p);
+	drop();
+	Build(DefenseTower,location(Titanium));
+	chargeCell();
+	
+	go(PowerCell);
+	grab();
+	chargeCell();
+	go(space(p,10,15,4));
+	drop();
+	chargeCell();
+	
+	go(TitaniumOre);
+	grab();
+	go(Converter);
+	drop();
+	move(-3);
+	waitForAvailable(Titanium,location(Converter));
+	go(Titanium);
+	grab();
+	chargeCell();
+	p = com.points[0];
+	go(p);
+	drop();
+	Build(Derrick,location(Titanium));
+	chargeCell();
+	
+	go(TitaniumOre);
+	grab();
+	go(Converter);
+	drop();
+	move(-3);
+	waitForAvailable(Titanium,location(Converter));
+	go(Titanium);
+	grab();
+	chargeCell();
+	p = com.points[1];
+	go(p);
+	drop();
+	Build(NuclearPlant,location(Titanium));
+	chargeCell();
+	
+	go(TitaniumOre);
+	grab();
+	go(Converter);
+	drop();
+	move(-3);
+	waitForAvailable(Titanium,location(Converter));
+	Build(Shielder,"Mission()");
+	chargeCell();
+	go(space(location(Derrick),10,30,4));
+	
+	while (true)
+	{
+		if (this.energyCell == null)
+		{
+			break;
+		}
+		wait(1);
+	}
+	wait(10);
+	
+	goGrab(NuclearCell);
+	o = radar(BotFactory);
+	p = aheadPoint(o,10,0);
+	o = radar(Shielder);
+	go(p);
+	drop();
+	move(-7);
+	
+	while (search(Shielder,location(BotFactory),0,40) != null)
+	{
+		Message("Wait for NuclearCell to be loaded to Shielder");
+		wait(5);
+	}
+	
+	camerafocus(this);
+	moveObjToObj(KeyA,SpaceShip);
+	missionComplete();
+}
+
+public void object::ShieldMission()
+{
+	shield(1,15);   // activate the shield
+	goto(6,160);    // go close to the key
+	shield(0,15);   // deactivate the shield
+	
+	while (radar(KeyA) != null)
+	{
+		wait(1);
+	}
+	
+	while (distance2d(position,location(Subber)) > 80)
+	{
+		wait(1);
+	}
+	
+	shield(1,15);   // activate the shield
+	goto(8,60);     // go to the spaceship
+	shield(0,15);   // deactivate the shield
+	
+	go(SpaceShip);
+	missionComplete();
+	takeoff();
+}
+
+public void object::ShootMission()
+{
+	missionComplete();
+}
