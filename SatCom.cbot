@@ -1773,7 +1773,7 @@ public void object::moveObjToObj(int c1,int c2)
 		if (c2 == PowerCaptor)
 		{
 			float a,ang[];
-			float d = 1.5;
+			float d = 1.2;
 			ang[0] = 45;
 			ang[1] = 135;
 			ang[2] = -45;
@@ -1808,11 +1808,11 @@ public void object::moveObjToObj(int c1,int c2)
 			{
 				if (search(Any,this.position,6,12) != null)
 				{
-					move(7);
+					move(10);
 				}
 				else
 				{
-					move(-7);
+					move(-10);
 				}
 			}
 			else
@@ -2072,11 +2072,11 @@ public void object::chargeCell()
 		
 		if (search(Any,this.position,6,12) != null)
 		{
-			move(7);
+			move(10);
 		}
 		else
 		{
-			move(-7);
+			move(-10);
 		}
 	}
 	
@@ -3964,7 +3964,7 @@ public void object::airGuard(object center, float radius)
 			
 			if (found(PowerCaptor))
 			{
-				if (distance2d(this.position,center.position) > (radius - 1) && distance2d(this.position,location(PowerCaptor)) > (50 - 1))
+				if (distance2d(this.position,center.position) > 45 && distance2d(this.position,location(PowerCaptor)) > 45)
 				{
 					motor(0,0);
 					aimAndFire(enemy);
@@ -3972,7 +3972,7 @@ public void object::airGuard(object center, float radius)
 			}
 			else
 			{
-				if (distance2d(this.position,center.position) > (radius - 1))
+				if (distance2d(this.position,center.position) > radius)
 				{
 					if (center.category == SpaceShip)
 					{
