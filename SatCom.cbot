@@ -1772,23 +1772,26 @@ public void object::moveObjToObj(int c1,int c2)
 	{
 		if (c2 == PowerCaptor)
 		{
-			if (radar(PowerCell,0,60,0,5) == null)
+			float a,ang[];
+			float d = 1.5;
+			ang[0] = 45;
+			ang[1] = 135;
+			ang[2] = -45;
+			ang[3] = -135;
+			
+			for (int i = 0; i < 4; i++)
 			{
-				drop();
+				a = ang[i];
+				if (radar(PowerCell,a,60,0,5) == null)
+				{
+					turn(a);
+					move(d);
+					drop();
+					move(-d);
+					turn(-a);
+					break;
+				}
 			}
-			else if (radar(PowerCell,90,60,0,5) == null)
-			{
-				turn(90);
-				drop();
-				turn(-90);
-			}
-			else if (radar(PowerCell,-90,60,0,5) == null)
-			{
-				turn(-90);
-				drop();
-				turn(90);
-			}
-			move(-4);
 		}
 		else
 		{
@@ -1801,7 +1804,21 @@ public void object::moveObjToObj(int c1,int c2)
 		}
 		else
 		{
-			move(-3);
+			if (c2 == PowerCaptor)
+			{
+				if (search(Any,this.position,6,12) != null)
+				{
+					move(7);
+				}
+				else
+				{
+					move(-7);
+				}
+			}
+			else
+			{
+				move(-3);
+			}
 		}
 	}
 	
@@ -1917,7 +1934,11 @@ public void object::chargeCell()
 	com.returnCode = 1;
 	point p;
 	object powerStation;
-	
+	object cells[],cell,o;
+	float dir;
+	float d;
+	float angle_difference;
+		
 	powerStation = radar(PowerStation);
 	if (powerStation == null)
 	{
@@ -1993,11 +2014,8 @@ public void object::chargeCell()
 	}
 	else // powerStation.category == PowerCaptor
 	{
-		if (this.category == WingedGrabber || this.category == WheeledGrabber)
+		if (this.category == WingedGrabber || this.category == WheeledGrabber || this.category == LeggedGrabber)
 		{
-			object cells[],cell,o;
-			float dir;
-			
 			cells = radarall(PowerCell,0,360,0,6);
 			cell = null;
 			for (int i = 0; i < sizeof(cells); i++)
@@ -2020,26 +2038,12 @@ public void object::chargeCell()
 			else
 			{
 				dir = direction(cell.position);
-				if (-30 < dir && dir < 30)
-				{
-					grab();
-				}
-				else if (dir > 30)
-				{
-					turn(90);
-					grab();
-				}
-				else if (dir < -30)
-				{
-					turn(-90);
-					grab();
-				}
-				move(4);
-				drop();
+				d = 1.5;
+				turn(dir);
+				move(d);
 				switchCell();
-				grab();
-				turn(180);
-				drop();
+				move(-d);
+				turn(-dir);
 			}
 		}
 		else
@@ -2050,7 +2054,7 @@ public void object::chargeCell()
 			}
 			
 			// Calculate the angle difference
-			float angle_difference = (180+powerStation.orientation) - this.orientation;
+			angle_difference = (180 + powerStation.orientation) - this.orientation;
 			
 			// Normalize the angle difference
 			if (angle_difference > 180)
@@ -2065,7 +2069,15 @@ public void object::chargeCell()
 			// Turn the bot by the normalized angle difference
 			turn(angle_difference);
 		}
-		move(-7);
+		
+		if (search(Any,this.position,6,12) != null)
+		{
+			move(7);
+		}
+		else
+		{
+			move(-7);
+		}
 	}
 	
 	com.chargeQueue.dequeue();
@@ -3368,7 +3380,10 @@ public void object::moveAndDestroy(object target)
 		while (distance2Spider(this.position) <= com.safeRoot)
 		{
 			motor(-1,-1);
-			jet(0.2);
+			if (this.temperature < com.temperatureThreshold)
+			{
+				jet(0.2);
+			}
 		}
 		motor(0,0);
 		aimAndFire(target);
@@ -3382,7 +3397,10 @@ public void object::moveAndDestroy(object target)
 		while (distance2Ants(this.position) <= 10)
 		{
 			motor(-1,-1);
-			jet(0.2);
+			if (this.temperature < com.temperatureThreshold)
+			{
+				jet(0.2);
+			}
 		}
 		motor(0,0);
 		aimAndFire(target);
@@ -3463,7 +3481,7 @@ public void object::aimAndFire(object target)
 				jet(-0.4);
 			}
 		}
-		while (angle < com.minAimAngle || angle > com.maxAimAngle);
+		while ((angle < com.minAimAngle || angle > com.maxAimAngle) && this.temperature < com.temperatureThreshold);
 		jet(0);
 	}
 	
@@ -3478,14 +3496,14 @@ public void object::aimAndFire(object target)
 	}
 	
 	point pos = target.position;
-	float dist=distance2d(pos,this.position);
-	float height=this.position.z-pos.z;
-	float ipitch=atan2(height,dist);
-	ipitch+=this.pitch; //compensate
-	float iangle=direction(pos);
+	float dist = distance2d(pos,this.position);
+	float height = this.position.z - pos.z;
+	float ipitch = atan2(height,dist);
+	ipitch += this.pitch; //compensate
+	float iangle = direction(pos);
 	//here we rotate ipitch and iangle by roll to compensate for that part of the scheme
-	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
-	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
+	float aimpitch = ipitch*cos(roll) - iangle*sin(roll);
+	float aimangle = iangle*cos(roll) + ipitch*sin(roll);
 	aim(-aimpitch,-aimangle);
 	
 	if (target != null && !target.dead)
@@ -3826,7 +3844,7 @@ public void object::landAndRest(point p)
 			right = rightPoint(this.position,behind);
 			motor(speed(left),speed(right));
 		}
-		enemy = radar(com.ants,0,360,0,com.attackRange);
+		enemy = radar(com.ants,0,360,0,10);
 		if (enemy != null)
 		{
 			motor(0,0);
@@ -3946,7 +3964,7 @@ public void object::airGuard(object center, float radius)
 			
 			if (found(PowerCaptor))
 			{
-				if (distance2d(this.position,center.position) > radius && distance2d(this.position,location(PowerCaptor)) > 50)
+				if (distance2d(this.position,center.position) > (radius - 1) && distance2d(this.position,location(PowerCaptor)) > (50 - 1))
 				{
 					motor(0,0);
 					aimAndFire(enemy);
@@ -3954,7 +3972,7 @@ public void object::airGuard(object center, float radius)
 			}
 			else
 			{
-				if (distance2d(this.position,center.position) > radius)
+				if (distance2d(this.position,center.position) > (radius - 1))
 				{
 					if (center.category == SpaceShip)
 					{
