@@ -9,14 +9,14 @@ Shooter.cbot
 Builder.cbot
 
 2. Load  the SatCom.cbot library program for each mission by editing the scene.txt file in the Colobot\data\levels\missions\chapterXXX\levelXXX folder and add script1="SatCom.cbot" to object Me under BeginObject section.
-
 For example, the scene.txt file for chapter003\level003 with title "On the Offensive" will look like the example below after adding script1="SatCom.cbot" to object Me under BeginObject section:
 
 BeginObject
 CreateObject pos= 0.00; 0.00 dir=0.0 type=SpaceShip run=1
 CreateObject pos= 0.00;-3.25 dir=1.5 type=Me script1="SatCom.cbot"
 
-3. In the bot Program Editor, declare an instance of the SatCom class, and you can call any function in the SatCom.cbot library program,. For example:
+3. In the bot Program Editor, declare an instance of the SatCom class, and you can call any function in the SatCom.cbot library program. For example:
+
 extern void object::Tropica3()
 {
 	SatCom com();
@@ -46,3 +46,4 @@ public void object::Mission()
 		ShootMission();
 	}
 }
+
