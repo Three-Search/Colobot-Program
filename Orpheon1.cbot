@@ -1,10 +1,13 @@
+/*
+Load this program to right WingedGrabber bot
+*/
 extern void object::Orpheon1()
 {
 	SatCom com();
 	
 	object o;
 	point start,p,q,r,c1,c2,c3,flatSpaces[];
-	float dis,minDis;
+	float dir,dis,minDis;
 	
 	start = position;
 	r = aheadPoint(com.me,105,-25);
@@ -72,16 +75,21 @@ extern void object::Orpheon1()
 	goGrab(PowerCell);
 	move(-10);
 	moveObjToObj(PowerCell,PowerCaptor);
+	go(q);
+	go(start);
+	goGrab(PowerCell);
+	move(-10);
+	moveObjToObj(PowerCell,PowerCaptor);
 	moveObjToObj(TitaniumOre,Converter);
 	waitForAvailable(Titanium);
 	p = aheadPoint(radar(BlueFlag),30,160);
 	moveObjToPlace(Titanium,p);
 	Build(BotFactory,location(Titanium));
 	Build(WingedOrgaShooter,"Mission()");
-	o = radar(PowerCaptor);
-	go(o);
+	go(PowerCaptor);
 	turn(direction(location(PowerCell)));
 	grab();
+	turn(45);
 	move(10);
 	moveObjToObj(PowerCell,WingedOrgaShooter);
 	p = aheadPoint(radar(Derrick),20,180);
@@ -101,6 +109,7 @@ extern void object::Orpheon1()
 			{
 				turn(direction(location(PowerCell)));
 				grab();
+				turn(45);
 				move(10);
 			}
 			moveObjToObj(PowerCell,WingedOrgaShooter);
