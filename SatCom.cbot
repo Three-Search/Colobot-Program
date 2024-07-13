@@ -1,7 +1,7 @@
 /*
-13 July 2024
+14 July 2024
 
-ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova
+ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
 Usage:
 
@@ -19,7 +19,7 @@ BeginObject
 CreateObject pos= 0.00; 0.00 dir=0.0 type=SpaceShip run=1
 CreateObject pos= 0.00;-3.25 dir=1.5 type=Me script1="SatCom.cbot"
 
-3. In the bot Program Editor, declare an instance of the SatCom class, and you can call any function in the SatCom.cbot library program,. For example:
+3. In the bot Program Editor, declare an instance of the SatCom class, and you can call any function in the SatCom.cbot library program. For example:
 extern void object::Tropica3()
 {
 	SatCom com();
@@ -3817,8 +3817,8 @@ public void object::landAndRest(point p)
 			{
 				motor(0,0);
 			}
-			jet(-0.9);
 		}
+		jet(-0.9);
 		if (this.altitude == 0)
 		{
 			behind = behindPoint(d);

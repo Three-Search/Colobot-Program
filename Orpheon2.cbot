@@ -1,3 +1,8 @@
+/*
+Load this program to left WingedGrabber bot and run it.
+After the left WingedGrabber bot discovered WingedOrgaShooter bot, open Program editor of the WingedOrgaShooter bot and call Mission() function of the left WingedGrabber bot.
+*/
+
 extern void object::Orpheon2()
 {
 	SatCom com();
