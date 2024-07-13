@@ -23,11 +23,7 @@ extern void object::Orpheon2()
 	o = Radar(WingedOrgaShooter);
 	go(o);
 	drop();
-	goGrab(PowerCell);
-	go(PowerCaptor);
-	drop();
-	turn(90);
-	move(7);
+	moveObjToObj(PowerCell,PowerCaptor);
 	go(left);
 	go(start);
 	turn(dir);
@@ -190,5 +186,5 @@ extern void object::Orpheon2()
 public void object::Mission()
 {
 	checkEnergyCell();
-	airGuard(radar(SpaceShip),60);
+	airGuard(radar(SpaceShip),50);
 }
