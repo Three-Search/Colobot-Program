@@ -23,6 +23,8 @@ extern void object::Orpheon2()
 	o = Radar(WingedOrgaShooter);
 	go(o);
 	drop();
+	Message("Please start a program of WingedOrgaShooter bot to call Mission() function of this bot");
+	
 	moveObjToObj(PowerCell,PowerCaptor);
 	go(left);
 	go(start);
@@ -97,10 +99,9 @@ extern void object::Orpheon2()
 	captors[5] = p5;
 	captors[6] = p6;
 	
-	Message("Please start a program of WingedOrgaShooter bot to call Mission() function of this bot");
-	
-	while (search(com.ants,p0,0,80) != null)
+	while (found(com.ants))
 	{
+		Message("Wait for WingedOrgaShooter to eliminate ants");
 		wait(10);
 	}
 	
@@ -119,12 +120,6 @@ extern void object::Orpheon2()
 	go(start);
 	turn(dir);
 	move(1.5);
-	
-	while (found(com.ants))
-	{
-		Message("Wait for WingedOrgaShooter to eliminate ants");
-		wait(10);
-	}
 	
 	for (int i = 1; i < sizeof(captors); i++)
 	{
@@ -165,9 +160,10 @@ extern void object::Orpheon2()
 		if (this.energyCell.energyLevel < 0.5)
 		{
 			go(o);
+			turn(direction(location(PowerCell)));
 			switchCell();
-			turn(90);
-			move(7);
+			turn(-45);
+			move(10);
 		}
 		go(left);
 		go(start);
