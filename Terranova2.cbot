@@ -1,0 +1,29 @@
+/*
+Load this program into left bot and run it. Right bot calls Mission() function of the left bot.
+*/
+
+extern void object::Terranova2()
+{
+	shield(1,15);
+	goto(12,-42);
+	
+	while (radar(KeyB) != null)
+	{
+		wait(1);
+	}
+	
+	while (distance2d(position,location(Subber)) > 20)
+	{
+		wait(1);
+	}
+	
+	go(SpaceShip);
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	moveObjToObj(KeyB,SpaceShip);
+	missionComplete();
+}
