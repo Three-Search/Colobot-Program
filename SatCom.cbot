@@ -1202,7 +1202,14 @@ public void object::fly(point p)
 	dis = distance(this.position,p);
 	dif = p.z-this.position.z;
 	ang = asin(dif/dis);
-	jet(1-(ang/-20));
+	if (radar(SpaceShip,0,90,0,20) != null && this.position.z >= com.spaceShip.position.z + 12)
+	{
+		jet(0);
+	}
+	else
+	{
+		jet(1-(ang/-20));
+	}
 	
 	if (com.detectedGraviPlant)
 	{
