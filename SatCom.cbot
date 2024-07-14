@@ -3823,8 +3823,9 @@ public void object::landAndRest(point p)
 	
 	fly2p(p);
 	
-	while (this.temperature > 0.02)
+	while (this.temperature > 0)
 	{
+		jet(-0.8);
 		if (this.altitude > 0)
 		{
 			if (distance2d(this.position,p) > 5)
@@ -3836,15 +3837,14 @@ public void object::landAndRest(point p)
 				motor(0,0);
 			}
 		}
-		jet(-0.9);
-		if (this.altitude == 0)
+		else
 		{
 			behind = behindPoint(d);
 			left = leftPoint(this.position,behind);
 			right = rightPoint(this.position,behind);
 			motor(speed(left),speed(right));
 		}
-		enemy = radar(com.ants,0,360,0,10);
+		enemy = radar(com.ants,0,360,0,20);
 		if (enemy != null)
 		{
 			motor(0,0);
@@ -3964,7 +3964,7 @@ public void object::airGuard(object center, float radius)
 			
 			if (found(PowerCaptor))
 			{
-				if (distance2d(this.position,center.position) > 45 && distance2d(this.position,location(PowerCaptor)) > 45)
+				if (distance2d(this.position,center.position) > radius && distance2d(this.position,location(PowerCaptor)) > 50)
 				{
 					motor(0,0);
 					aimAndFire(enemy);
