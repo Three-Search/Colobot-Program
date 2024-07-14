@@ -1,8 +1,12 @@
+/*
+Load this program to right bot and run it. Left bot to call Mission() function of right bot.
+*/
+
 extern void object::Tropica3()
 {
 	SatCom com();
 	
-	Message("Please start a program of Winged Grabber bot to call Mission() function of this bot");
+	message(category + ": Please start a program of Winged Grabber bot to call Mission() function of this bot");
 	waitForAvailable(RepairCenter);
 	
 	Build(ResearchCenter);
