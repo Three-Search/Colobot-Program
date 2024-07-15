@@ -64,6 +64,7 @@ public class Queue
 	int rear;
 	int length;
 	bool isLocked;
+	object lockedBy;
 	
 	// Constructor to initialize the queue
 	public void Queue(int size)
@@ -76,29 +77,32 @@ public class Queue
 		rear = 0;
 		length = size;
 		isLocked = false;
+		lockedBy = null;
 	}
 	
 	// Method to acquire the lock
-	void lock()
+	synchronized void lock(object bot)
 	{
-		while (isLocked)
+		while (isLocked && lockedBy != null)
 		{
 			// Wait until the lock is released
-			wait(2);
+			wait(1);
 		}
 		isLocked = true;
+		lockedBy = bot;
 	}
 	
 	// Method to release the lock
 	void unlock()
 	{
 		isLocked = false;
+		lockedBy = null;
 	}
 	
 	// Method to add an item to the queue
 	void enqueue(object item)
 	{
-		lock();
+		lock(item);
 		if ((rear + 1) % length == front)
 		{
 			Message("Queue is full. Could not add object into queue");
@@ -111,9 +115,9 @@ public class Queue
 	}
 	
 	// Method to remove an item from the queue
-	object dequeue()
+	object dequeue(object bot)
 	{
-		lock();
+		lock(bot);
 		if (isEmpty())
 		{
 			Message("Queue is empty. Could not remove front object from queue");
@@ -133,9 +137,9 @@ public class Queue
 	}
 	
 	// Method to peek at the front item of the queue without removing it
-	object peek()
+	object peek(object bot)
 	{
-		removeNulls(); // Clean up nulls before peeking
+		removeNulls(bot); // Clean up nulls before peeking
 		if (isEmpty())
 		{
 			Message("Queue is empty. Could not peak at the front object");
@@ -145,9 +149,9 @@ public class Queue
 	}
 	
 	// Method to remove nulls from the entire queue
-	void removeNulls()
+	void removeNulls(object bot)
 	{
-		lock();
+		lock(bot);
 		int newFront = front;
 		while (newFront != rear)
 		{
@@ -250,6 +254,7 @@ public class SatCom
 	{
 		if (staticInited)
 		{
+			/*
 			me = radar(Me);
 			spaceShip = radar(SpaceShip);
 			botFactory = radar(BotFactory);
@@ -264,6 +269,7 @@ public class SatCom
 			nuclearPlant = radar(NuclearPlant);
 			converter = radar(Converter);
 			powerCaptor = radar(PowerCaptor);
+			*/
 			return;
 		}
 		
@@ -1883,7 +1889,7 @@ public void object::repair()
 	com.repairQueue.enqueue(this);
 	com.returnMessage = category+": Enqueue for repair";
 	
-	if (com.repairQueue.peek() != this)
+	if (com.repairQueue.peek(this) != this)
 	{
 		if (category == WingedShooter || category == WingedOrgaShooter)
 		{
@@ -1900,7 +1906,7 @@ public void object::repair()
 	
 	while (true)
 	{
-		if (com.repairQueue.peek() == this)
+		if (com.repairQueue.peek(this) == this)
 		{
 			break;
 		}
@@ -1925,7 +1931,7 @@ public void object::repair()
 		wait(1);
 	}
 	move(-3);
-	com.repairQueue.dequeue();
+	com.repairQueue.dequeue(this);
 	if (category != WingedShooter && category != WingedOrgaShooter && !found(com.ants))
 	{
 		go(p);
@@ -1963,7 +1969,7 @@ public void object::chargeCell()
 	com.chargeQueue.enqueue(this);
 	com.returnMessage = category+": Enqueue for charge PowerCell";
 	
-	if (com.chargeQueue.peek() != this)
+	if (com.chargeQueue.peek(this) != this)
 	{
 		if (category == WingedShooter || category == WingedOrgaShooter)
 		{
@@ -1980,7 +1986,7 @@ public void object::chargeCell()
 	
 	while (true)
 	{
-		if (com.chargeQueue.peek() == this)
+		if (com.chargeQueue.peek(this) == this)
 		{
 			break;
 		}
@@ -2087,7 +2093,7 @@ public void object::chargeCell()
 		}
 	}
 	
-	com.chargeQueue.dequeue();
+	com.chargeQueue.dequeue(this);
 	if (isShooter(category) && !found(com.ants))
 	{
 		go(p);
