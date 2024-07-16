@@ -79,6 +79,7 @@ public class Queue
 	}
 	
 	// Method to acquire the lock
+	//void lock(object bot)
 	synchronized void lock(object bot)
 	{
 		while (lockedBy != null)
@@ -135,7 +136,7 @@ public class Queue
 	// Method to peek at the front item of the queue without removing it
 	object peek(object bot)
 	{
-		removeNulls(bot); // Clean up nulls before peeking
+		removeNull(bot); // Clean up nulls before peeking
 		if (isEmpty())
 		{
 			Message("Queue is empty. Could not peak at the front object");
@@ -169,6 +170,16 @@ public class Queue
 		}
 		unlock();
 	}
+	
+	void removeNull(object bot)
+    {
+        lock(bot);
+        while (front != rear && items[front] == null)
+        {
+            front = (front + 1) % length;
+        }
+        unlock();
+    }
 }
 
 public class SatCom
@@ -1204,7 +1215,7 @@ public void object::fly(point p)
 	dis = distance(this.position,p);
 	dif = p.z-this.position.z;
 	ang = asin(dif/dis);
-	if (radar(SpaceShip,0,90,0,20) != null && this.position.z >= com.spaceShip.position.z + 12)
+	if (radar(SpaceShip,0,90,0,20) != null && this.position.z >= com.spaceShip.position.z + 10)
 	{
 		jet(0);
 	}
