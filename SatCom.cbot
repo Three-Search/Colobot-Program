@@ -1,5 +1,5 @@
 /*
-14 July 2024
+15 July 2024
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
@@ -63,7 +63,6 @@ public class Queue
 	int front;
 	int rear;
 	int length;
-	bool isLocked;
 	object lockedBy;
 	
 	// Constructor to initialize the queue
@@ -76,26 +75,23 @@ public class Queue
 		front = 0;
 		rear = 0;
 		length = size;
-		isLocked = false;
 		lockedBy = null;
 	}
 	
 	// Method to acquire the lock
 	synchronized void lock(object bot)
 	{
-		while (isLocked && lockedBy != null)
+		while (lockedBy != null)
 		{
 			// Wait until the lock is released
 			wait(1);
 		}
-		isLocked = true;
 		lockedBy = bot;
 	}
 	
 	// Method to release the lock
 	void unlock()
 	{
-		isLocked = false;
 		lockedBy = null;
 	}
 	
@@ -619,7 +615,7 @@ public class SatCom
 		CATEGORY_NAMES[5] = "BotFactory";
 		CATEGORY_NAMES[6] = "PowerStation";
 		CATEGORY_NAMES[7] = "Converter";
-		CATEGORY_NAMES[8] = "RepairStation";
+		CATEGORY_NAMES[8] = "RepairCenter";
 		CATEGORY_NAMES[9] = "DefenseTower";
 		CATEGORY_NAMES[10] = "AlienNest";
 		CATEGORY_NAMES[11] = "ResearchCenter";
@@ -4300,7 +4296,7 @@ public void object::landGuard(object center,float radius)
 	float dif;
 	float cPitch,angle = 0;
 	point p,last,left,right,front,back;
-	object o,enemy;
+	object o,target,enemies[];
 	int i;
 	
 	errmode(0);
@@ -4320,16 +4316,16 @@ public void object::landGuard(object center,float radius)
 			break;
 		}
 		
-		enemy = search(com.ants,center.position,0,detectRange);
+		target = search(com.ants,center.position,0,detectRange);
 		
-		if (enemy != null)
+		if (target != null)
 		{
 			o = radar(Any,0,140,1.5,12);
 			if (o == null)
 			{
 				o = radar(Any,0,90,1.5,5);
 			}
-			if (o != null && o.category != center.category && o.category != enemy.category && distance2d(this.position,enemy.position) > com.safeAnt)
+			if (o != null && o.category != target.category && o.category != center.category && distance2d(this.position,target.position) > com.safeAnt)
 			{
 				turn(direction(o.position));
 				motor(-1,-1);
@@ -4340,8 +4336,9 @@ public void object::landGuard(object center,float radius)
 			}
 			
 			i++;
-			crawl(enemy.position);
-			if (distance(this.position,last) <= 0.03)
+			crawl(target.position);
+			// check if stuck
+			if (distance(this.position,last) <= 0.05)
 			{
 				if (i > 10)
 				{
@@ -4361,30 +4358,83 @@ public void object::landGuard(object center,float radius)
 				last = this.position;
 			}
 			
-			dis = distance2d(this.position,enemy.position);
-			dir = direction(enemy.position);
-			targetOri = this.orientation + dir;
-			front.x = this.position.x + cos(targetOri);
-			front.y = this.position.y + sin(targetOri);
-			back.x = this.position.x - cos(targetOri);
-			back.y = this.position.y - sin(targetOri);
-			cPitch = atan2(topo(front) - topo(back), 2);
-			angle = atan2(enemy.position.z - this.position.z - 2, dis) - cPitch;
-			
-			if (dis <= 5 || (dis <= com.attackRange && -21 < angle && angle < 21 && -15 <= dir && dir <= 15 && checkLOS(enemy.position)))
+			// check how many enemies, exclude wasp
+			enemies = radarall(com.ants,0,360,0,com.attackRange);
+			if (sizeof(enemies) >= 3)
 			{
-				turn(direction(enemy.position));
-				atan2(enemy.position.z - this.position.z - 2, dis) - cPitch;
-				aim(angle, -direction(enemy.position));
-				if (enemy != null && !enemy.dead)
+				//Message("Too many enemies ahead. Update target to nearest enemy");
+				target = radar(com.ants);
+			}
+			
+			dis = distance(this.position,target.position);
+			
+			//if (dis <= com.attackRange && -21 < angle && angle < 21)
+			if (dis <= com.attackRange)
+			{
+				if (!checkLOS(target.position))
 				{
-					fire(0.05);
-					wait(0.1);
+					left = leftPoint(target.position);
+					right = rightPoint(target.position);
+					//left.z = topo(left) + 1.5;
+					//right.z = topo(right) + 1.5;
+					left.z = topo(left);
+					right.z = topo(right);
+					
+					if (checkLOS(left,target.position))
+					{
+						crawl(left);
+						if (!checkLOS(target.position))
+						{
+							continue;
+						}
+						/*
+						Message("No clear view, can not shoot. Crawl to left side of target");
+						turn(75);
+						motor(1,1);
+						wait(0.4);
+						if (!checkLOS(target.position))
+						{
+							turn(direction(target.position));
+							continue;
+						}
+						*/
+					}
+					else if (checkLOS(right,target.position))
+					{
+						crawl(right);
+						if (!checkLOS(target.position))
+						{
+							continue;
+						}
+						/*
+						Message("No clear view, can not shoot. Crawl to right side of target");
+						turn(-75);
+						motor(1,1);
+						wait(0.4);
+						if (!checkLOS(target.position))
+						{
+							turn(direction(target.position));
+							continue;
+						}
+						*/
+					}
+					else
+					{
+						//Message("No clear view, can not shoot. Crawl forward target");
+						continue;
+					}
 				}
+				motor(0,0);
+				aimAndFire(target);
+			}
+			else
+			{
+				aim(0,0);
 			}
 		}
 		else
 		{
+			aim(0,0);
 			o = radar(Any,0,140,1.5,12);
 			if (o == null)
 			{
@@ -4404,16 +4454,9 @@ public void object::landGuard(object center,float radius)
 			right = rightPoint(front,center.position);
 			
 			i++;
-			if (distance2d(this.position,right) > 0.5)
-			{
-				crawl(right);
-			}
-			else
-			{
-				motor(0,0);
-			}
-			
-			if (distance(this.position,last) <= 0.03)
+			crawl(right);
+			// check if stuck
+			if (distance(this.position,last) <= 0.05)
 			{
 				if (i > 10)
 				{
