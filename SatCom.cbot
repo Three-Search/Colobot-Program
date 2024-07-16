@@ -1217,7 +1217,7 @@ public void object::fly(point p)
 	ang = asin(dif/dis);
 	if (radar(SpaceShip,0,90,0,20) != null && this.position.z >= com.spaceShip.position.z + 10)
 	{
-		jet(0);
+		jet(-0.05);
 	}
 	else
 	{
