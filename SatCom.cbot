@@ -1,5 +1,5 @@
 /*
-15 July 2024
+17 July 2024
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
@@ -138,9 +138,9 @@ public class Queue
 		lock(bot);
 		// Clean up null at the front of the queue before peeking
 		if (front != rear && items[front] == null)
-        {
-            front = (front + 1) % length;
-        }
+		{
+		    front = (front + 1) % length;
+		}
 		if (isEmpty())
 		{
 			Message("Queue is empty. Could not peak at the front object");
