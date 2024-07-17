@@ -1,0 +1,92 @@
+/*
+Load this test code on Moon, Black Box level
+*/
+
+extern void object::Test360BotsSynchronized()
+{
+	SatCom com();
+	
+	int bot = LeggedShooter;
+	int numBots = 360;
+	point p,pi;
+	object bots[];
+	int complete,remain;
+	float time;
+	float angleIncrement = 360.0 / 60;
+	float angle;
+	float radius = 50;
+	int i;
+	
+	produce(flatSpace(),0,RepairCenter);
+	com.repairCenter = radar(RepairCenter);
+	
+	p = location(SpaceShip);
+	
+	for(i = 0; i < numBots; i++)
+	{
+		angle = angleIncrement * i;
+		pi.x = p.x + radius * cos(angle);
+		pi.y = p.y + radius * sin(angle);
+		pi.z = topo(pi);
+		produce(pi,0,bot,"Shooter.cbot",100);
+		if ((i+1) % 60 == 0)
+		{
+			radius = radius + 10;
+		}
+	}
+	
+	time = abstime();
+	com.ints[0] = 0;
+	
+	while (true)
+	{
+		complete = com.ints[0];
+		remain = numBots-complete;
+		Message("Completed repair "+complete+" bots. "+remain+" remain.");
+		if (com.repairQueue.isEmpty())
+		{
+			break;
+		}
+		wait(10);
+	}
+	
+	bots = radarall(bot);
+	remain = sizeof(bots);
+	Message("Completed repair "+numBots+"bots. "+(numBots-remain)+" bots died. Elapsed time in seconds "+(abstime() - time));
+}
+
+public void object::Shooter()
+{
+	wait(20*rand());
+	simple_repair();
+}
+
+public void object::simple_repair()
+{
+	SatCom com();
+	
+	point p;
+	
+	p = this.position;
+	com.repairQueue.enqueue(this);
+	com.returnMessage = category+": Enqueue for repair";
+	
+	while (true)
+	{
+		if (com.repairQueue.peek(this) == this)
+		{
+			break;
+		}
+		wait(1);
+	}
+	
+	goto(com.repairCenter.position);
+	while (this.shieldLevel < 1)
+	{
+		wait(1);
+	}
+	move(-3);
+	com.ints[0]++;
+	com.repairQueue.dequeue(this);
+	goto(p);
+}
