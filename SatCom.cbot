@@ -3384,23 +3384,6 @@ public void object::moveAndDestroy(object target)
 		return;
 	}
 	
-	// check how near to enemies, exclude wasp
-	if (distance2Ants(this.position) < 10)
-	{
-		Message("Too near to enemy. Pull back and attack immediately");
-		while (distance2Ants(this.position) <= 10)
-		{
-			motor(-1,-1);
-			if (this.temperature < com.temperatureThreshold)
-			{
-				jet(0.2);
-			}
-		}
-		motor(0,0);
-		aimAndFire(target);
-		return;
-	}
-	
 	dis = distance(this.position,target.position);
 	
 	//if (dis <= com.attackRange && -15 <= dir && dir <= 15)   // if within range
