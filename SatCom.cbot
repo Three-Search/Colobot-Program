@@ -1321,12 +1321,16 @@ public void object::fly(object o)
 			i = 0;
 			last = this.position;
 		}
+		if (this.altitude < 2)
+		{
+			break;
+		}
 	}
 	
 	motor(0,0);
 	while (this.altitude > 0)
 	{
-		jet(-0.9);
+		jet(-0.8);
 	}
 	com.returnCode = 0;
 }
@@ -3449,6 +3453,7 @@ public void object::aimAndFire(object target)
 	SatCom com();
 	float dir,angle;
 	int i;
+	float z;
 	
 	if (target == null || target.dead || distance2d(this.position,target.position) > com.attackRange)
 	{
@@ -3458,6 +3463,7 @@ public void object::aimAndFire(object target)
 	if (category == WingedShooter || category == WingedOrgaShooter)
 	{
 		i = 0;
+		z = this.position.z;
 		do
 		{
 			i++;
@@ -3470,8 +3476,13 @@ public void object::aimAndFire(object target)
 			{
 				jet(-0.4);
 			}
+			
+			if (this.temperature > com.temperatureThreshold || this.energyCell.energyLevel < com.energyThreshold || this.shieldLevel < com.shieldThreshold)
+			{
+				break;
+			}
 		}
-		while ((angle < com.minAimAngle || angle > com.maxAimAngle) && this.temperature < com.temperatureThreshold);
+		while (angle < com.minAimAngle || angle > com.maxAimAngle);
 		jet(0);
 	}
 	
