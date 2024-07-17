@@ -59,11 +59,11 @@ extern void object::houston()
 
 public class Queue
 {
-	object[] items;
-	int front;
-	int rear;
-	int length;
-	object lockedBy;
+	static object[] items;
+	static int front;
+	static int rear;
+	static int length;
+	static object lockedBy;
 	
 	// Constructor to initialize the queue
 	public void Queue(int size)
@@ -79,7 +79,6 @@ public class Queue
 	}
 	
 	// Method to acquire the lock
-	//void lock(object bot)
 	synchronized void lock(object bot)
 	{
 		while (lockedBy != null)
@@ -130,56 +129,27 @@ public class Queue
 	// Method to check if the queue is empty
 	bool isEmpty()
 	{
-		return front == rear;
+		return (front == rear);
 	}
 	
 	// Method to peek at the front item of the queue without removing it
 	object peek(object bot)
 	{
-		removeNull(bot); // Clean up nulls before peeking
-		if (isEmpty())
-		{
-			Message("Queue is empty. Could not peak at the front object");
-			return null;
-		}
-		return items[front];
-	}
-	
-	// Method to remove nulls from the entire queue
-	void removeNulls(object bot)
-	{
 		lock(bot);
-		int newFront = front;
-		while (newFront != rear)
-		{
-			if (items[newFront] == null)
-			{
-				// Shift all items after the null one step forward
-				int i = newFront;
-				while (i != rear)
-				{
-					items[i] = items[(i + 1) % length];
-					i = (i + 1) % length;
-				}
-				rear = (rear - 1 + length) % length;
-			}
-			else
-			{
-				newFront = (newFront + 1) % length;
-			}
-		}
-		unlock();
-	}
-	
-	void removeNull(object bot)
-    {
-        lock(bot);
-        while (front != rear && items[front] == null)
+		// Clean up null at the front of the queue before peeking
+		if (front != rear && items[front] == null)
         {
             front = (front + 1) % length;
         }
-        unlock();
-    }
+		if (isEmpty())
+		{
+			Message("Queue is empty. Could not peak at the front object");
+			unlock();
+			return null;
+		}
+		unlock();
+		return items[front];
+	}
 }
 
 public class SatCom
@@ -303,8 +273,8 @@ public class SatCom
 			detectedEgg = true;
 		}
 		
-		chargeQueue = new Queue(11);
-		repairQueue = new Queue(11);
+		chargeQueue = new Queue(1001);
+		repairQueue = new Queue(1001);
 		
 		me = radar(Me);
 		spaceShip = radar(SpaceShip);
