@@ -6,7 +6,7 @@ extern void object::Test360BotsSynchronized()
 {
 	SatCom com();
 	
-	int bot = LeggedShooter;
+	int bot = WingedShooter;
 	int numBots = 360;
 	point p,pi;
 	object bots[];
@@ -24,6 +24,14 @@ extern void object::Test360BotsSynchronized()
 	
 	for(i = 0; i < numBots; i++)
 	{
+		if (i > 180)
+		{
+			bot = LeggedShooter;
+		}
+		else
+		{
+			bot = WingedShooter;
+		}
 		angle = angleIncrement * i;
 		pi.x = p.x + radius * cos(angle);
 		pi.y = p.y + radius * sin(angle);
@@ -80,7 +88,7 @@ public void object::simple_repair()
 		wait(1);
 	}
 	
-	goto(com.repairCenter.position);
+	go(com.repairCenter);
 	while (this.shieldLevel < 1)
 	{
 		wait(1);
@@ -88,5 +96,5 @@ public void object::simple_repair()
 	move(-3);
 	com.ints[0]++;
 	com.repairQueue.dequeue(this);
-	goto(p);
+	go(p);
 }
