@@ -1,5 +1,5 @@
 /*
-Load this to left bot and run. Right bot call Mission() of left bot.
+Load this to right bot and run. Left bot to call Mission() function of right bot.
 
 */
 
