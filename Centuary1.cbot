@@ -1,3 +1,9 @@
+/*
+Load this program to winged grabber bot and run it. Wait for it discovers recycler bot and load Nuclear Cell to legged grabber bot.
+Recycler bot and legged grabber bot to call Mission() function of winged grabber bot
+
+*/
+
 extern void object::Centuary1()
 {
 	SatCom com();
