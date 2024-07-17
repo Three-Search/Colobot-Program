@@ -1,3 +1,8 @@
+/*
+Load this program to left bot and run it. Right bot to call Mission() of left bot.
+
+*/
+
 extern void object::Volcano2()
 {
 	SatCom com();
@@ -50,7 +55,7 @@ extern void object::Volcano2()
 	grab();
 	moveObjToObj(PowerCell,WingedGrabber);
 	
-	moveObjToObj(TitaniumOre,Converter);
+	loadTitaniumOre(Converter);
 	waitForAvailable(Titanium);
 	moveObjToObj(Titanium,PowerPlant);
 	
