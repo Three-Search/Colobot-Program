@@ -3437,6 +3437,7 @@ public void object::aimAndFire(object target)
 	float dir,angle;
 	int i;
 	float z;
+	float time;
 	
 	if (target == null || target.dead || distance2d(this.position,target.position) > com.attackRange)
 	{
@@ -3447,6 +3448,7 @@ public void object::aimAndFire(object target)
 	{
 		i = 0;
 		z = this.position.z;
+		time = abstime();
 		do
 		{
 			i++;
@@ -3460,7 +3462,7 @@ public void object::aimAndFire(object target)
 				jet(-0.4);
 			}
 			
-			if (this.temperature > com.temperatureThreshold || this.energyCell.energyLevel < com.energyThreshold || this.shieldLevel < com.shieldThreshold)
+			if (abstime() - time > 3)
 			{
 				break;
 			}
