@@ -1,3 +1,8 @@
+/*
+Use astronaut to find a winged grabber bot with 20% energy left in its energy cell. Load this program into the bot and run it.
+
+*/
+
 extern void object::Centuary3()
 {
 	SatCom com();
