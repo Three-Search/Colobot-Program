@@ -98,7 +98,8 @@ extern void object::Terranova1()
 	turn(180);
 	move(5);
 	Build(LeggedGrabber,"Mission()");
-	go(Converter);
+	go(right);
+	go(start1);
 	goGrab(PowerCell);
 	moveObjToObj(PowerCell,LeggedGrabber);
 	go(ResearchCenter);
