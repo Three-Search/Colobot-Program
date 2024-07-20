@@ -1,0 +1,119 @@
+/*
+Load this test code on Moon, Black Box level
+*/
+
+extern void object::Test500Bots10Stations()
+{
+	SatCom com();
+	
+	int bot = WingedShooter;
+	int numBots = 500;
+	int numStations = 10;
+	point p,pi;
+	object bots[];
+	int complete,remain;
+	float time;
+	float angleIncrement = 360.0 / 60;
+	float angle;
+	float radius = 50;
+	int i;
+	string str;
+	
+	for(i = 0; i < numStations; i++)
+	{
+		produce(flatSpace(),0,RepairCenter);
+	}
+	
+	initRepairQueues(numBots+1);
+	
+	p = location(SpaceShip);
+	
+	for(i = 0; i < numBots; i++)
+	{
+		if (i % 2 == 0)
+		{
+			bot = LeggedShooter;
+		}
+		else
+		{
+			//bot = LeggedOrgaShooter;
+			bot = WingedShooter;
+		}
+		angle = angleIncrement * i;
+		pi.x = p.x + radius * cos(angle);
+		pi.y = p.y + radius * sin(angle);
+		pi.z = topo(pi);
+		produce(pi,0,bot,"Shooter.cbot",100);
+		if ((i+1) % 60 == 0)
+		{
+			radius = radius + 10;
+		}
+	}
+	
+	time = abstime();
+	com.ints[0] = 0;
+	
+	while (com.ints[0] < numBots)
+	{
+		complete = com.ints[0];
+		remain = numBots-complete;
+		Message("Completed repair "+complete+" bots. "+remain+" remain.");
+		str = "";
+		for(i = 0; i < numStations; i++)
+		{
+			str = str + "Q"+i+"("+com.repairQueues[i].size()+") ";
+		}
+		Message("Bots in queue: "+str);
+		wait(10);
+	}
+	
+	Message("Completed repair "+numBots+"bots. Elapsed time in seconds "+(abstime() - time));
+}
+
+public void object::Shooter()
+{
+	point p;
+	
+	p = this.position;
+	wait(20*rand());
+	simple_repair();
+	errmode(0);
+	go(p);
+	produce(p,0,GreenFlag);
+	errmode(0);
+}
+
+public void object::simple_repair()
+{
+	SatCom com();
+	int queueIndex;
+	point p;
+	
+	queueIndex = leastCrowded(com.repairQueues);
+	com.repairQueues[queueIndex].enqueue(this);
+	com.returnMessage = category+": Enqueue for repair";
+	
+	while (true)
+	{
+		if (com.repairQueues[queueIndex].peek(this) == this)
+		{
+			break;
+		}
+		wait(1);
+	}
+	
+	p = com.repairQueues[queueIndex].station.position;
+	errmode(0);
+	go(p);
+	errmode(0);
+	while (this.shieldLevel < 1)
+	{
+		wait(1);
+	}
+	
+	com.ints[0]++;
+	com.repairQueues[queueIndex].dequeue(this);
+	errmode(0);
+	go(space(p,10,15,4));
+	errmode(0);
+}
