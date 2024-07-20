@@ -59,11 +59,12 @@ extern void object::houston()
 
 public class Queue
 {
-	static object[] items;
-	static int front;
-	static int rear;
-	static int length;
-	static object lockedBy;
+	object[] items;
+	int front;
+	int rear;
+	int length;
+	object lockedBy;
+	object station;
 	
 	// Constructor to initialize the queue
 	public void Queue(int size)
@@ -76,6 +77,7 @@ public class Queue
 		rear = 0;
 		length = size;
 		lockedBy = null;
+		station = null;
 	}
 	
 	// Method to acquire the lock
@@ -93,6 +95,19 @@ public class Queue
 	void unlock()
 	{
 		lockedBy = null;
+	}
+	
+	// Method to get the number of items in the queue
+	int size()
+	{
+		if (rear >= front)
+		{
+			return rear - front;
+		}
+		else
+		{
+			return length - front + rear;
+		}
 	}
 	
 	// Method to add an item to the queue
@@ -121,6 +136,7 @@ public class Queue
 			return null;
 		}
 		object item = items[front];
+		items[front] = null; // Clear the spot
 		front = (front + 1) % length;
 		unlock();
 		return item;
@@ -139,7 +155,7 @@ public class Queue
 		// Clean up null at the front of the queue before peeking
 		if (front != rear && items[front] == null)
 		{
-		    front = (front + 1) % length;
+			    front = (front + 1) % length;
 		}
 		if (isEmpty())
 		{
@@ -171,6 +187,8 @@ public class SatCom
 	static bool builderInUsed = false;
 	static Queue chargeQueue;
 	static Queue repairQueue;
+	static Queue[] chargeQueues;
+	static Queue[] repairQueues;
 	
 	static float FLYING_RANGE = 1500;
 	static float DRIVING_RANGE = 100;
@@ -845,6 +863,38 @@ public void object::Message(string s)
 	
 	com.returnMessage = category + ": " + s;
 	message(com.returnMessage);
+}
+
+public void object::initRepairQueues(int length)
+{
+	SatCom com();
+	object[] repairCenters = radarall(RepairCenter);
+	object o;
+	int n = sizeof(repairCenters);
+	
+	for (int i = 0; i < n; i++)
+	{
+		com.repairQueues[i] = new Queue(length);
+		o = repairCenters[i];
+		com.repairQueues[i].station = o;
+	}
+}
+public int object::leastCrowded(Queue[] q)
+{
+	int n = sizeof(q);
+	int k = 0;
+	int s;
+	int m = 999999;
+	for (int i = 0; i < n; i++)
+	{
+		s = q[i].size();
+		if (s < m)
+		{
+			m = s;
+			k = i;
+		}
+	}
+	return k;
 }
 
 public float object::flatRequire(int c)
@@ -1734,7 +1784,7 @@ public void object::moveObjToObj(int c1,int c2)
 	}
 	
 	if ((c1 == PowerCell || c1 == NuclearCell) && c2 != PowerCaptor)
-	{		
+	{  
 		object obj[],o;
 		if (isBot(c2))
 		{
@@ -1754,7 +1804,7 @@ public void object::moveObjToObj(int c1,int c2)
 				go(o);
 				break;
 			}
-		}		
+		}  
 	}
 	else
 	{
@@ -1896,7 +1946,7 @@ public void object::repair()
 			if (category == WingedShooter || category == WingedOrgaShooter)
 			{
 				gotoSafeLZ(repairCenter);
-			}	
+			} 
 		}
 		wait(1);
 	}
@@ -1932,7 +1982,7 @@ public void object::chargeCell()
 	float dir;
 	float d;
 	float angle_difference;
-		
+	
 	powerStation = radar(PowerStation);
 	if (powerStation == null)
 	{
@@ -1976,7 +2026,7 @@ public void object::chargeCell()
 			if (category == WingedShooter || category == WingedOrgaShooter)
 			{
 				gotoSafeLZ(powerStation);
-			}	
+			} 
 		}
 		wait(1);
 	}
@@ -3528,7 +3578,7 @@ public void object::airFire(object target)
 		}
 	}
 	while (angle < com.minAimAngle || angle > com.maxAimAngle);
-		
+	
 	jet(0);
 	dir = direction(target.position);
 	angle = -atan2(this.position.z - target.position.z,distance(this.position,target.position)) - this.pitch;
