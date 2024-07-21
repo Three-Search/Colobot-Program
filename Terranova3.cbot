@@ -1,0 +1,117 @@
+/*
+Load this program to right bot and run it. Left bot to call Mission() function of right bot.
+*/
+
+extern void object::Terranova3()
+{
+	SatCom com();
+	
+	com.builderCameraFocus = false;
+	com.builderBotCategory = LeggedBuilder;
+	
+	object o;
+	point start,p,p1,p2,p3;
+	
+	start = this.position;
+	
+	Message("Astronaut, I am building defense tower, please grab a power cell and standby to load power cell to defense tower");
+	Build(DefenseTower);
+	Message("Astronaut, please load power cell to defense tower");
+	p1 = flatSpace();
+	p2 = flatSpace();
+	p3 = flatSpace();
+	Build(DefenseTower);
+	Message("Astronaut, please load power cell to defense tower");
+	goGrab(Titanium);
+	moveObjToPlace(Titanium,p1);
+	Build(BotFactory,location(Titanium));
+	go(start);
+	goGrab(Titanium);
+	Build(LeggedOrgaShooter,"Mission()");
+	Message("Astronaut, please load power cell to LeggedOrgaShooter");
+	
+	go(start);
+	
+	while (this.energyCell != null)
+	{
+		Message("Astronaut, please change my energy cell to continue");
+		wait(10);
+	}
+	
+	while (this.energyCell == null)
+	{
+		wait(5);
+	}
+	
+	wait(10);
+	goGrab(Titanium);
+	
+	o = search(731,location(SpaceShip),190,200);
+	p = flatspace(o.position,5,0,10,4);
+	moveObjToPlace(Titanium,p);
+	Build(Derrick,location(Titanium));
+	go(space(position,10,15,4));
+	waitForAvailable(KeyC);
+	go(Derrick);
+	grab();
+	moveObjToObj(KeyC,SpaceShip);
+	missionComplete();
+	takeoff();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == Shielder)
+	{
+		ShieldMission();
+	}
+	else if (isShooter(category))
+	{
+		ShootMission();
+	}
+}
+
+public void object::ShieldMission()
+{
+	SatCom com();
+	
+	object o;
+	float dis;
+	
+	while (found(com.enemies))
+	{
+		o = search(AlienAnt,location(SpaceShip),0,com.safeAnt);
+		if (o != null)
+		{
+			shield(1,45);
+			while (distance2Enemies(location(SpaceShip)) < com.safeAnt)
+			{
+				wait(1);
+			}
+		}
+		else
+		{
+			o = search(AlienWasp,location(SpaceShip),0,com.safeAnt);
+			if (o != null && o.load != null && o.load.category == OrgaMatter)
+			{
+				shield(1,45);
+				while (distance2Enemies(location(SpaceShip)) < com.safeAnt)
+				{
+					wait(1);
+				}
+			}
+		}
+		shield(0,45);
+		wait(1);
+	}
+	
+	missionComplete();
+}
+
+public void object::ShootMission()
+{
+	attack();
+	missionComplete();
+}
