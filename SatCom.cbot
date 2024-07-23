@@ -211,7 +211,9 @@ public class SatCom
 	static bool detectedWorm = false;
 	static bool detectedEgg = false;
 	static bool detectedWasp = false;
+	static bool detectedQueen = false;
 	static float safeAnt = 55;
+	static float safeQueen = 110;
 	static float safeRoot = 30;
 	static float safeTopo = 1.5;
 	static float safeFlatGround = 0;
@@ -290,6 +292,10 @@ public class SatCom
 		{
 			detectedEgg = true;
 		}
+		if (radar(AlienQueen) != null)
+		{
+			detectedQueen = true;
+		}
 		
 		chargeQueue = new Queue(1001);
 		repairQueue = new Queue(1001);
@@ -339,6 +345,7 @@ public class SatCom
 		ants[nr++] = AlienWorm;
 		ants[nr++] = AlienEgg;
 		//ants[nr++] = AlienWasp;
+		ants[nr++] = AlienQueen;
 		
 		nr = 0;
 		// Ruin
@@ -359,11 +366,14 @@ public class SatCom
 		enemies[nr++] = AlienWorm;
 		enemies[nr++] = AlienEgg;
 		enemies[nr++] = AlienWasp;
+		enemies[nr++] = AlienQueen;
 		
+		/*
 		for (int i = 710; i < 716; i++)
 		{
 			enemies[nr++] = i;
 		}
+		*/
 		
 		int[] a0 = 
 		{
@@ -3273,6 +3283,11 @@ public void object::attack()
 
 public void object::airAttack()
 {
+	airAttack(this,10000);
+}
+
+public void object::airAttack(object o,float radius)
+{
 	SatCom com();
 	object enemy,root,center;
 	float dir,dis2Base,dis2Enemy,detectRange;
@@ -3282,8 +3297,9 @@ public void object::airAttack()
 	errmode(0);
 	ipf(10000);
 	
-	center = this;
-	detectRange = 10000;
+	center = o;
+	detectRange = radius;
+	
 	i = 0;
 	last = this.position;
 	while (true)
@@ -3340,6 +3356,13 @@ public void object::airAttack()
 						continue;
 					}
 				}
+			}
+			
+			// check how near to Ant
+			if (distance2Ant(this.position) <= com.safeAnt)
+			{
+				// too near to enemy, update enemy
+				enemy = radar(com.ants);
 			}
 			
 			i++;
@@ -4239,6 +4262,16 @@ public void object::landAttack()
 			
 			dis = distance(this.position,target.position);
 			
+			if (category == PhazerShooter)
+			{
+				if (dis <= com.safeQueen)
+				{
+					motor(0,0);
+					PhazerAim();
+				}
+				continue;
+			}
+			
 			//if (dis <= com.attackRange && -21 < angle && angle < 21)
 			if (dis <= com.attackRange)
 			{
@@ -4331,7 +4364,7 @@ public void object::landGuard(object center,float radius)
 	i = 0;
 	last = this.position;
 	aim(0,0);
-	while (true)
+	while (found(com.ants))
 	{
 		errmode(0);
 		checkSelfStatus();
@@ -4394,6 +4427,16 @@ public void object::landGuard(object center,float radius)
 			}
 			
 			dis = distance(this.position,target.position);
+			
+			if (category == PhazerShooter)
+			{
+				if (dis <= com.safeQueen)
+				{
+					motor(0,0);
+					PhazerAim();
+				}
+				continue;
+			}
 			
 			//if (dis <= com.attackRange && -21 < angle && angle < 21)
 			if (dis <= com.attackRange)
@@ -4462,47 +4505,225 @@ public void object::landGuard(object center,float radius)
 		else
 		{
 			aim(0,0);
-			o = radar(Any,0,140,1.5,12);
-			if (o == null)
-			{
-				o = radar(Any,0,90,1.5,5);
-			}
-			if (o != null && o.category != center.category && o.category != AlienAnt)
-			{
-				turn(direction(o.position));
-				motor(-1,-1);
-				wait(1);
-				turn(45);
-				motor(1,1);
-				wait(2);
-			}
+			
 			
 			front = aheadPoint(center,radius,0);
 			right = rightPoint(front,center.position);
 			
-			i++;
-			crawl(right);
-			// check if stuck
-			if (distance(this.position,last) <= 0.05)
+			right = space(center.position,15,25,5);
+			
+			go(right);
+			
+			/*
+			while (distance2d(this.position,front) > 5)
 			{
-				if (i > 10)
+				o = radar(Any,0,140,1.5,12);
+				if (o == null)
 				{
-					Message("Being stuck at current position, try other way");
+					o = radar(Any,0,90,1.5,5);
+				}
+				if (o != null && o.category != center.category && o.category != AlienAnt)
+				{
+					turn(direction(o.position));
 					motor(-1,-1);
 					wait(1);
 					turn(45);
 					motor(1,1);
 					wait(2);
+				}
+				
+				i++;
+				crawl(right);
+				// check if stuck
+				if (distance(this.position,last) <= 0.05)
+				{
+					if (i > 10)
+					{
+						Message("Being stuck at current position, try other way");
+						motor(-1,-1);
+						wait(1);
+						turn(45);
+						motor(1,1);
+						wait(2);
+						i = 0;
+						last = this.position;
+					}
+				}
+				else
+				{
 					i = 0;
 					last = this.position;
 				}
+				
+				if (search(com.ants,center.position,0,detectRange) != null)
+				{
+					break;
+				}
+			}
+			*/
+		}
+	}
+	missionComplete();
+	errmode(1);
+}
+
+public void object::PhazerAim()
+{
+	SatCom com();
+	
+	float scanRange = 150; // scan for targets within this radius
+	
+	// Platform specific parameters
+	float minAngle = -20; // minimum gun elevation relative to platform
+	float maxAngle = 45; // maximum gun elevation relative to platform
+	float weaponHeight = 2; // height of weapon above platform
+	float weaponOffset = 2; // weapon is this amount in front of platform
+	float maxTurnRate = 54; // maximum turn rate
+	
+	// Ballistic parameters
+	float v0 = 50; // muzzle velocity (m / s)
+	float g = 50; // gravitation (m / s^2)
+	float bc = v0 * v0 / g; // ballistic constant (max range at equal height)
+	
+	// Variables to track target (cylindrcal coordinates)
+	float bearing, range, height, time;
+	float deltaBearing, deltaRange, deltaHeight, deltaTime;
+	
+	// Old variables
+	float oldBearing;
+	float oldRange;
+	float oldHeight;
+	float oldTime;
+	
+	// Variables needed for target solution
+	float rt, zt;
+	float t;
+	float D;
+	float it;
+	float azimuth;
+	float elevation;
+	float turnRate;
+	float motorOutput;
+	
+	// Variables needed for slope correction
+	float pitchAz;
+	float rollAz;
+	float a;
+	float b;
+	float c;
+	float d;
+	float corr;
+	
+	float fireTime;
+	
+	object target;
+	
+	while (true)
+	{
+		target = radar(com.enemies,0,360,0,scanRange);
+		
+		if (target == null)
+		{
+			break;
+		}
+		
+		// Initialize the old variables
+		oldBearing = orientation + direction(target.position);
+		oldRange = distance2d(position, target.position);
+		oldHeight = target.position.z - position.z;
+		oldTime = abstime();
+		
+		it = sqrt(2) * oldRange / v0; // initial estimate for intercept time
+		fireTime = abstime() + 0.2; // don't fire for 0.5 seconds (first track target)
+		
+		while (target == radar(com.enemies,0,360,0,scanRange)) // As long as target is the most critical target
+		{
+			// Collect data
+			bearing = orientation + direction(target.position);
+			range = distance2d(position, target.position);
+			height = target.position.z - position.z;
+			time = abstime();
+			
+			// Calculate differences
+			deltaBearing = bearing - oldBearing;
+			deltaRange = range - oldRange;
+			deltaHeight = height - oldHeight;
+			deltaTime = time - oldTime;
+			if (deltaTime == 0)
+			{
+				deltaTime = 0.01;
+			}
+			
+			// Save data for next pass
+			oldBearing = bearing;
+			oldRange = range;
+			oldHeight = height;
+			oldTime = time;
+			
+			// Extrapolate target motion to interception point
+			t = it / deltaTime; // time factor
+			azimuth = bearing + t * deltaBearing - orientation; // intercept azimuth
+			if (azimuth < -180)
+			{
+				azimuth += 360; // azimuth correction (pole passage)
+			}
+			if (azimuth > 180)
+			{
+				azimuth -= 360;
+			}
+			zt = height + t * deltaHeight - cos(pitch) * cos(roll) * weaponHeight; // intercept height
+			rt = range + t * deltaRange - weaponOffset * cos(azimuth) * cos(pitch); // intercept range
+			
+			// Calculate weapon elevation
+			D = bc * (bc - 2 * zt) / (rt * rt) - 1; // discriminant
+			if (D < 0)
+			{
+				elevation = atan(bc / rt); // target out of range
 			}
 			else
 			{
-				i = 0;
-				last = this.position;
+				elevation = atan(bc / rt - sqrt(D)); // target in range
+			}
+			
+			it = rt / (v0 * cos(elevation)); // intercept time (estimate for next pass)
+			
+			// Slope-correction
+			pitchAz = pitch * cos(azimuth) - roll * sin(azimuth); // pitch at target azimuth
+			rollAz = roll * cos(azimuth) + pitch * sin(azimuth); // roll at target azimuth
+			
+			// Solve slope-target spherical triangle
+			b = elevation - pitchAz; // relative elevation at target azimuth
+			a = asin(sin(b) * cos(rollAz)); // new gun elevation
+			c = acos(cos(b) / cos(a));
+			if (c == nan)
+			{
+				c = 0;
+			}
+			if (b < 0) 
+			{
+				c = -c; // intermediate variable
+			}
+			d = asin(sin(c) * sin(rollAz)); // intermediate variable
+			corr = -acos(cos(c) / cos(d));
+			if (d < 0)
+			{
+				corr = -corr; // azimuth correction
+			}
+			azimuth += corr; // apply azimuthal correction
+			
+			// Point the weapon in the right direction
+			aim(a); // weapon elevation
+			turnRate = (deltaBearing + azimuth / 5) / deltaTime; // rotate with target
+			motorOutput = 0.5 * turnRate / maxTurnRate; // calculate motor output
+			motor(-motorOutput, motorOutput); // apply turn rate
+			
+			// Fire if target is within weapon envelope
+			if (D >= 0 && a > minAngle - 2 && a < maxAngle + 2 && azimuth > -2 && azimuth < 2 && fireTime < abstime())
+			{
+				fire(0.2);
+				fireTime = abstime() + it + 0.1; // wait until round hit (or not)
+				Message("Firing at range " + distance(position, target.position) + " m.");
 			}
 		}
 	}
-	errmode(1);
 }
