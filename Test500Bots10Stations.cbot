@@ -9,24 +9,36 @@ extern void object::Test500Bots10Stations()
 	int bot = WingedShooter;
 	int numBots = 500;
 	int numStations = 10;
-	point p,pi;
-	object bots[];
+	point p,pi,sp;
+	object o,bots[];
 	int complete,remain;
 	float time;
 	float angleIncrement = 360.0 / 60;
-	float angle;
+	float angle,relative_angle;
 	float radius = 50;
 	int i;
 	string str;
 	
+	o = radar(SpaceShip);
+	sp = o.position;
+	
 	for(i = 0; i < numStations; i++)
 	{
-		produce(flatSpace(),0,RepairCenter);
+		p = flatSpace();
+		
+		if (i < 6)
+		{
+			angle = o.orientation - (i*30);
+		}
+		else
+		{
+			angle = o.orientation + 120 - (i - 6)*30;
+		}
+		
+		produce(p,angle,RepairCenter);
 	}
 	
 	initRepairQueues(numBots+1);
-	
-	p = location(SpaceShip);
 	
 	for(i = 0; i < numBots; i++)
 	{
@@ -40,11 +52,11 @@ extern void object::Test500Bots10Stations()
 			bot = WingedShooter;
 		}
 		angle = angleIncrement * i;
-		pi.x = p.x + radius * cos(angle);
-		pi.y = p.y + radius * sin(angle);
+		pi.x = sp.x + radius * cos(angle);
+		pi.y = sp.y + radius * sin(angle);
 		pi.z = topo(pi);
 		produce(pi,0,bot,"Shooter.cbot",100);
-		if ((i+1) % 60 == 0)
+		if ((i+1) % 36 == 0)
 		{
 			radius = radius + 10;
 		}
@@ -77,10 +89,9 @@ public void object::Shooter()
 	p = this.position;
 	wait(20*rand());
 	simple_repair();
-	errmode(0);
 	go(p);
+	turn(direction(location(SpaceShip)));
 	produce(p,0,GreenFlag);
-	errmode(0);
 }
 
 public void object::simple_repair()
@@ -103,17 +114,15 @@ public void object::simple_repair()
 	}
 	
 	p = com.repairQueues[queueIndex].station.position;
-	errmode(0);
 	go(p);
-	errmode(0);
 	while (this.shieldLevel < 1)
 	{
 		wait(1);
 	}
-	
 	com.ints[0]++;
 	com.repairQueues[queueIndex].dequeue(this);
-	errmode(0);
-	go(space(p,10,15,4));
-	errmode(0);
+	if (category == LeggedShooter || category == LeggedOrgaShooter)
+	{
+		go(space(p,10,15,4));
+	}
 }
