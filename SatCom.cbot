@@ -1,5 +1,5 @@
 /*
-17 July 2024
+26 July 2024
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
@@ -211,9 +211,10 @@ public class SatCom
 	static bool detectedWorm = false;
 	static bool detectedEgg = false;
 	static bool detectedWasp = false;
+	static bool detectedGreenMushroom = false;
 	static bool detectedQueen = false;
 	static float safeAnt = 55;
-	static float safeQueen = 110;
+	static float safeQueen = 80;
 	static float safeRoot = 30;
 	static float safeTopo = 1.5;
 	static float safeFlatGround = 0;
@@ -291,6 +292,10 @@ public class SatCom
 		if (radar(AlienEgg) != null)
 		{
 			detectedEgg = true;
+		}
+		if (radar(GreenMushroom) != null)
+		{
+			detectedGreenMushroom = true;
 		}
 		if (radar(AlienQueen) != null)
 		{
@@ -1109,6 +1114,26 @@ public float object::distance2Wasp(point p)
 	}
 }
 
+public float object::distance2GreenMushroom(point p)
+{
+	SatCom com();
+	
+	if (!com.detectedGreenMushroom)
+	{
+		return 999999;
+	}
+	
+	object o = search(GreenMushroom,p);
+	if (o == null)
+	{
+		return 999999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
 public float object::distance2Enemies(point p)
 {
 	SatCom com();
@@ -1188,18 +1213,12 @@ public void object::plantFlag(point p, int c)
 	}
 }
 
-public void object::fly2p(point p)
+public void object::crawl2p(point p)
 {
-	SatCom com();
-	
 	turn(direction(p));
-	while (distance2d(this.position,p) > 5)
+	while (distance2d(this.position,p) > 1)
 	{
-		fly(p);
-		if (this.altitude < 2)
-		{
-			break;
-		}
+		crawl(p);
 	}
 }
 
@@ -1224,6 +1243,21 @@ public void object::crawl(point p)
 	
 	dir = direction(p);
 	motor(1 - dir/90,1 + dir/90);
+}
+
+public void object::fly2p(point p)
+{
+	SatCom com();
+	
+	turn(direction(p));
+	while (distance2d(this.position,p) > 5)
+	{
+		fly(p);
+		if (this.altitude < 2)
+		{
+			break;
+		}
+	}
 }
 
 public void object::fly(point p)
@@ -1497,7 +1531,6 @@ public void object::go(point p)
 		wait(1);
 		i++;
 	}
-	errmode(1);
 }
 
 public void object::go(object o)
@@ -2200,7 +2233,11 @@ public void object::checkEnergyCell()
 	{
 		if (distance2d(this.position,location(BotFactory)) < 3)
 		{
-			wait(5);
+			while (radar(Any,180,90,0,12) != null)
+			{
+				Message("Wait for exit path to be cleared");
+				wait(5);
+			}
 			camerafocus(this);
 			move(-7);
 		}
@@ -3304,9 +3341,7 @@ public void object::airAttack(object o,float radius)
 	last = this.position;
 	while (true)
 	{
-		errmode(0);
 		checkSelfStatus();
-		errmode(0);
 		
 		if (com.detectedEgg && !com.detectedWasp)
 		{
@@ -3398,7 +3433,6 @@ public void object::airAttack(object o,float radius)
 	
 	gotoSafeLZ();
 	missionComplete();
-	errmode(1);
 }
 
 public void object::moveAndDestroy(object target)
@@ -3942,9 +3976,7 @@ public void object::airGuard(object center, float radius)
 			break;
 		}
 		
-		errmode(0);
 		checkSelfStatus(center,radius);
-		errmode(0);
 		
 		if (com.detectedEgg && !com.detectedWasp)
 		{
@@ -4053,7 +4085,6 @@ public void object::airGuard(object center, float radius)
 	
 	landAndRest(start);
 	missionComplete();
-	errmode(1);
 }
 
 public point object::getRestPoint(object center, float radius)
@@ -4197,20 +4228,32 @@ public void object::landAttack()
 	float cPitch,angle = 0;
 	point p,last,left,right,front,back;
 	object o,target,enemies[];
+	int antQueen[];
 	int i;
 	
 	errmode(0);
 	
+	antQueen[0] = AlienAnt;
+	antQueen[1] = AlienQueen;
+	
 	i = 0;
-	last = position;
+	last = this.position;
 	aim(0,0);
-	while (true)
+	while (found(com.ants))
 	{
-		errmode(0);
-		checkSelfStatus();
-		errmode(0);
+		if (category != PhazerShooter)
+		{
+			checkSelfStatus();
+		}
 		
-		target = radar(com.ants);
+		if (com.detectedQueen)
+		{
+			target = radar(antQueen);
+		}
+		else
+		{
+			target = radar(com.ants);
+		}
 		
 		if (target != null)
 		{
@@ -4257,17 +4300,20 @@ public void object::landAttack()
 			if (sizeof(enemies) >= 3)
 			{
 				//Message("Too many enemies ahead. Update target to nearest enemy");
-				target = radar(com.ants);
+				if (category != PhazerShooter)
+				{
+					target = radar(com.ants);
+				}
 			}
 			
-			dis = distance(this.position,target.position);
+			dis = distance2d(this.position,target.position);
 			
 			if (category == PhazerShooter)
 			{
-				if (dis <= com.safeQueen)
+				if (dis <= com.attackRange)
 				{
 					motor(0,0);
-					PhazerAim();
+					PhazerAim(target);
 				}
 				continue;
 			}
@@ -4338,11 +4384,10 @@ public void object::landAttack()
 		}
 		else
 		{
-			break;
+			wait(1);
 		}
 	}
 	missionComplete();
-	errmode(1);
 }
 
 public void object::landGuard(object center,float radius)
@@ -4366,9 +4411,7 @@ public void object::landGuard(object center,float radius)
 	aim(0,0);
 	while (found(com.ants))
 	{
-		errmode(0);
 		checkSelfStatus();
-		errmode(0);
 		
 		if (center == null)
 		{
@@ -4426,14 +4469,14 @@ public void object::landGuard(object center,float radius)
 				target = radar(com.ants);
 			}
 			
-			dis = distance(this.position,target.position);
+			dis = distance2d(this.position,target.position);
 			
 			if (category == PhazerShooter)
 			{
-				if (dis <= com.safeQueen)
+				if (dis <= com.attackRange)
 				{
 					motor(0,0);
-					PhazerAim();
+					PhazerAim(target);
 				}
 				continue;
 			}
@@ -4564,14 +4607,16 @@ public void object::landGuard(object center,float radius)
 		}
 	}
 	missionComplete();
-	errmode(1);
 }
 
-public void object::PhazerAim()
+public void object::PhazerAim(object target)
 {
+	errmode(0);
+	
 	SatCom com();
 	
-	float scanRange = 150; // scan for targets within this radius
+	//float scanRange = 150; // scan for targets within this radius
+	float scanRange = com.safeQueen; // scan for targets within this radius
 	
 	// Platform specific parameters
 	float minAngle = -20; // minimum gun elevation relative to platform
@@ -4585,8 +4630,8 @@ public void object::PhazerAim()
 	float g = 50; // gravitation (m / s^2)
 	float bc = v0 * v0 / g; // ballistic constant (max range at equal height)
 	
-	// Variables to track target (cylindrcal coordinates)
-	float bearing, range, height, time;
+	// Variables to track target (cylindrical coordinates)
+	float bearing, range, height, time, dis;
 	float deltaBearing, deltaRange, deltaHeight, deltaTime;
 	
 	// Old variables
@@ -4596,7 +4641,7 @@ public void object::PhazerAim()
 	float oldTime;
 	
 	// Variables needed for target solution
-	float rt, zt;
+	float rt,zt;
 	float t;
 	float D;
 	float it;
@@ -4604,6 +4649,7 @@ public void object::PhazerAim()
 	float elevation;
 	float turnRate;
 	float motorOutput;
+	float cosAngle;
 	
 	// Variables needed for slope correction
 	float pitchAz;
@@ -4612,21 +4658,15 @@ public void object::PhazerAim()
 	float b;
 	float c;
 	float d;
+	float x;
 	float corr;
 	
 	float fireTime;
 	
-	object target;
+	object current;
 	
-	while (true)
+	if (target != null && target.category != AlienEgg)
 	{
-		target = radar(com.enemies,0,360,0,scanRange);
-		
-		if (target == null)
-		{
-			break;
-		}
-		
 		// Initialize the old variables
 		oldBearing = orientation + direction(target.position);
 		oldRange = distance2d(position, target.position);
@@ -4636,8 +4676,14 @@ public void object::PhazerAim()
 		it = sqrt(2) * oldRange / v0; // initial estimate for intercept time
 		fireTime = abstime() + 0.2; // don't fire for 0.5 seconds (first track target)
 		
-		while (target == radar(com.enemies,0,360,0,scanRange)) // As long as target is the most critical target
+		while (true) 
 		{
+			current = radar(com.enemies,0,360,0,scanRange);
+			if (target == null || current == null || target != current)
+			{
+				break;
+			}
+			
 			// Collect data
 			bearing = orientation + direction(target.position);
 			range = distance2d(position, target.position);
@@ -4649,9 +4695,9 @@ public void object::PhazerAim()
 			deltaRange = range - oldRange;
 			deltaHeight = height - oldHeight;
 			deltaTime = time - oldTime;
-			if (deltaTime == 0)
+			if (deltaTime == 0.0)
 			{
-				deltaTime = 0.01;
+				deltaTime = 0.001;
 			}
 			
 			// Save data for next pass
@@ -4673,6 +4719,10 @@ public void object::PhazerAim()
 			}
 			zt = height + t * deltaHeight - cos(pitch) * cos(roll) * weaponHeight; // intercept height
 			rt = range + t * deltaRange - weaponOffset * cos(azimuth) * cos(pitch); // intercept range
+			if (rt == 0.0)
+			{
+				rt = 0.001;
+			}
 			
 			// Calculate weapon elevation
 			D = bc * (bc - 2 * zt) / (rt * rt) - 1; // discriminant
@@ -4685,7 +4735,13 @@ public void object::PhazerAim()
 				elevation = atan(bc / rt - sqrt(D)); // target in range
 			}
 			
-			it = rt / (v0 * cos(elevation)); // intercept time (estimate for next pass)
+			cosAngle = cos(elevation);
+			if (cosAngle == 0.0)
+			{
+				cosAngle = 0.001;
+			}
+			
+			it = rt / (v0 * cosAngle); // intercept time (estimate for next pass)
 			
 			// Slope-correction
 			pitchAz = pitch * cos(azimuth) - roll * sin(azimuth); // pitch at target azimuth
@@ -4693,26 +4749,88 @@ public void object::PhazerAim()
 			
 			// Solve slope-target spherical triangle
 			b = elevation - pitchAz; // relative elevation at target azimuth
-			a = asin(sin(b) * cos(rollAz)); // new gun elevation
-			c = acos(cos(b) / cos(a));
-			if (c == nan)
+			x = sin(b) * cos(rollAz);
+			if (x < -1)
 			{
-				c = 0;
+				x = -1;
 			}
+			else if (x > 1)
+			{
+				x = 1;
+			}
+			a = asin(x); // new gun elevation
+			
+			cosAngle = cos(a);
+			if (cosAngle == 0.0)
+			{
+				cosAngle = 0.001;
+			}
+			
+			x = cos(b) / cosAngle;
+			if (x < -1)
+			{
+				x = -1;
+			}
+			else if (x > 1)
+			{
+				x = 1;
+			}
+			c = acos(x);
+			
 			if (b < 0) 
 			{
 				c = -c; // intermediate variable
 			}
-			d = asin(sin(c) * sin(rollAz)); // intermediate variable
-			corr = -acos(cos(c) / cos(d));
+			
+			x = sin(c) * sin(rollAz);
+			if (x < -1)
+			{
+				x = -1;
+			}
+			else if (x > 1)
+			{
+				x = 1;
+			}
+			d = asin(x); // intermediate variable
+			
+			cosAngle = cos(d);
+			if (cosAngle == 0)
+			{
+				cosAngle = 0.001;
+			}
+			
+			x = cos(c) / cosAngle;
+			if (x < -1)
+			{
+				x = -1;
+			}
+			else if (x > 1)
+			{
+				x = 1;
+			}
+			corr = -acos(x);
+			
 			if (d < 0)
 			{
 				corr = -corr; // azimuth correction
 			}
+			
 			azimuth += corr; // apply azimuthal correction
 			
 			// Point the weapon in the right direction
-			aim(a); // weapon elevation
+			if (a < minAngle)
+			{
+				aim(minAngle);
+			}
+			else if (a > maxAngle)
+			{
+				aim(maxAngle);
+			}
+			else
+			{
+				aim(a); // weapon elevation	
+			}
+			
 			turnRate = (deltaBearing + azimuth / 5) / deltaTime; // rotate with target
 			motorOutput = 0.5 * turnRate / maxTurnRate; // calculate motor output
 			motor(-motorOutput, motorOutput); // apply turn rate
@@ -4720,9 +4838,13 @@ public void object::PhazerAim()
 			// Fire if target is within weapon envelope
 			if (D >= 0 && a > minAngle - 2 && a < maxAngle + 2 && azimuth > -2 && azimuth < 2 && fireTime < abstime())
 			{
-				fire(0.2);
-				fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-				Message("Firing at range " + distance(position, target.position) + " m.");
+				if (target != null && !target.dead)
+				{
+					dis = distance(this.position, target.position);
+					fire(0.2);
+					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
+					Message("Firing at range " + dis + " m.");
+				}
 			}
 		}
 	}
