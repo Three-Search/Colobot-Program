@@ -1,0 +1,533 @@
+/*
+Load this program to Subber bot and run it. Then, run a program from Shielder bot to call Mission() function of the Subber bot.
+Astronaut assistance is needed to load PowerCell to the first DefenseTower and the WingedGrabber as Subber could not load PowerCell to others.
+This mission is very long and involves many complicated tasks. Bots will wait to coordinate with each other, so please be patient when you see a bot waiting.
+*/
+
+extern void object::Terranova4()
+{
+	SatCom com();
+	
+	com.builderCameraFocus = false;
+	com.builderBotCategory = LeggedBuilder;
+	com.bools[0] = false;
+	com.bools[1] = false;
+	com.bools[2] = false;
+	
+	object o;
+	point start,p,p1,p2,p3,p4;
+	
+	start = this.position;
+	p1 = flatSpace();
+	p2 = flatSpace();
+	
+	Message("Astronaut, I am building defense tower. Please standby and load power cell to defense tower immediately");
+	goGrab(Titanium);
+	turn(-45);
+	move(4);
+	Build(DefenseTower);
+	Build(BotFactory);
+	Build(WingedGrabber,"Mission()");
+	Message("Astronaut, please load power cell to WingedGrabber");
+	Build(Converter);
+	Build(PowerStation);
+	go(space(position,10,20,10));
+	waitForAvailable(PowerStation);
+	chargeCell();
+	p = aheadPoint(radar(BotFactory),12,90);
+	moveObjToObj(TitaniumOre,Converter);
+	waitForAvailable(Titanium);
+	moveObjToPlace(Titanium,p);
+	Build(DefenseTower,location(Titanium));
+	chargeCell();
+	go(TitaniumOre);
+	Build(WingedOrgaShooter,"Mission()");
+	p4 = flatSpace();
+	Build(NuclearPlant);
+	chargeCell();
+	go(TitaniumOre);
+	Build(RepairCenter);
+	chargeCell();
+	goGrab(UraniumOre);
+	chargeCell();
+	p = aheadPoint(radar(NuclearPlant),10,0);
+	go(p);
+	drop();
+	
+	go(start);
+	missionComplete();
+}
+
+public void object::Mission()
+{
+	checkEnergyCell();
+	
+	if (category == Shielder)
+	{
+		ShieldMission();
+	}
+	else if (category == WingedGrabber)
+	{
+		GrabMission();
+	}
+	else if (category == PhazerShooter)
+	{
+		PhazerMission();
+	}
+	else if (category == WingedOrgaShooter)
+	{
+		ShootMission();
+	}
+}
+
+public void object::ShieldMission()
+{
+	SatCom com();
+	
+	turn(90);
+	move(30);
+	turn(direction(location(GreenMushroom)));
+	move(5);
+	
+	com.bools[0] = true;
+	
+	while (!com.bools[1])
+	{
+		Message("Wait for Full NuclearCell to start mission");
+		wait(10);
+	}
+	
+	waitForAvailable(PhazerShooter);
+	Message("Please run Mission() from PhazerShooter");
+	
+	while (!com.bools[2])
+	{
+		Message("Wait for PhazerShooter to ready");
+		wait(2);
+	}
+	
+	FollowPhazer();
+	
+	missionComplete();
+}
+
+public void object::serviceDefenseTowers()
+{
+	SatCom com();
+	
+	object o,towers[];
+	
+	towers = radarall(DefenseTower);
+	
+	for (int i = 0; i < sizeof(towers); i++)
+	{
+		o = towers[i];
+		if (o.energyCell == null)
+		{
+			go(SpaceShip);
+			goGrab(PowerCell);
+			turnAway(location(SpaceShip));
+			move(7);
+			moveObjToObj(PowerCell,DefenseTower);
+		}
+		else
+		{
+			if (o.energyCell.energyLevel < 0.2)
+			{
+				go(o);
+				while (distance2Enemies(position) <= com.safeAnt*2)
+				{
+					Message("Wait for no enemy around before changing DefenseTower PowerCell");
+					wait(2);
+				}
+				grab();
+				chargeCell();
+				go(o);
+				drop();
+				go(space(location(DefenseTower),10,20,4));
+			}
+			else if (0.2 <= o.energyCell.energyLevel && o.energyCell.energyLevel < 0.4)
+			{
+				chargeCell();
+				if (o.energyCell.energyLevel < 0.2)
+				{
+					go(o);
+					while (distance2Enemies(position) <= com.safeAnt*2)
+					{
+						Message("Wait for no enemy around before changing DefenseTower PowerCell");
+						wait(2);
+					}
+					grab();
+					chargeCell();
+					go(o);
+					drop();
+					go(space(location(DefenseTower),10,20,4));
+				}
+				else
+				{
+					go(o);
+					while (distance2Enemies(position) <= com.safeAnt*2)
+					{
+						Message("Wait for no enemy around before changing DefenseTower PowerCell");
+						wait(2);
+					}
+					switchCell();
+					chargeCell();
+					go(space(location(DefenseTower),10,20,4));
+				}
+			}
+		}
+	}
+	
+}
+
+public void object::GrabMission()
+{
+	SatCom com();
+	
+	object o,b,a,towers[];
+	
+	o = radar(DefenseTower);
+	go(space(o.position,10,20,4));
+	camerafocus(radar(Subber));
+	while (true)
+	{
+		serviceDefenseTowers();
+		
+		b = search(WingedOrgaShooter,location(BotFactory),0,5);
+		if (b != null && b.energyCell == null)
+		{
+			go(SpaceShip);
+			goGrab(PowerCell);
+			turnAway(location(SpaceShip));
+			move(7);
+			moveObjToObj(PowerCell,WingedOrgaShooter);
+			chargeCell();
+			go(space(location(DefenseTower),10,20,4));
+		}
+		
+		o = search(UraniumOre,location(SpaceShip),15,40);
+		if (o != null)
+		{
+			moveObjToObj(UraniumOre,NuclearPlant);
+			waitForAvailable(NuclearCell);
+			go(NuclearPlant);
+			grab();
+			while (!com.bools[0])
+			{
+				Message("Please run Mission() from Shielder");
+				wait(5);
+			}
+			switchCell(Shielder);
+			move(-3);
+			turn(90);
+			drop();
+			turn(-90);
+			com.bools[1] = true;
+			go(space(location(DefenseTower),10,20,4));
+		}
+		
+		o = radar(KeyD);
+		
+		if (o != null)
+		{
+			a = search(AlienAnt,location(KeyD),0,150);
+			if (a == null)
+			{
+				openVault();
+				go(space(location(DefenseTower),10,20,4));
+			}
+			
+		}
+		
+		wait(5);
+	}
+	
+	missionComplete();
+}
+
+public void object::PhazerMission()
+{
+	SatCom com();
+	object o;
+	point p;
+	
+	errmode(0);
+	
+	o = radar(PowerStation);
+	p = aheadPoint(o,15,0);
+	go(p);
+	
+	while (!com.bools[0] || !com.bools[1])
+	{
+		Message("Wait for Shielder ready to protect me");
+		wait(10);
+	}
+	
+	Message("Start mission");
+	o = radar(Shielder);
+	p = aheadPoint(o,5,0);
+	go(p);
+	
+	com.bools[2] = true;
+	
+	com.safeQueen = 40;
+	navigateValley();
+	com.safeQueen = 80;
+	while (found(com.enemies))
+	{
+		attack();
+	}
+	
+	missionComplete();
+}
+
+public void object::ShootMission()
+{
+	SatCom com();
+	
+	com.safeTopo = 1;
+	com.safeFlatGround = 0.5;
+	
+	if (category == WingedOrgaShooter)
+	{
+		airAttack(radar(KeyD),150);
+		Message("Area around KeyD is clear of enemies. WingedGrabber can collect KeyD for opening Vault");
+		camerafocus(radar(WingedGrabber));
+		airGuard(radar(SpaceShip),30);
+	}
+	
+	missionComplete();
+}
+
+public void object::openVault()
+{
+	SatCom com();
+	
+	object o;
+	o = Radar(Vault);
+	point p1,p2,A,B,C,D;
+	
+	p1 = aheadPoint(radar(SpaceShip),20,-90);
+	p2 = aheadPoint(radar(SpaceShip),3.5,-90);
+	A = aheadPoint(o,6,180);
+	B = aheadPoint(o,6,0);
+	C = aheadPoint(o,6,-90);
+	D = aheadPoint(o,6,90);
+	
+	while (distance2d(location(KeyA),location(Me)) < 10 || distance2d(location(KeyB),location(Me)) < 10 || distance2d(location(KeyC),location(Me)) < 10)
+	{
+		Message("Astronaut, please stay 10 meters away from KeyA, KeyB, KeyC");
+		wait(5);
+	}
+	
+	for (int i = 0; i < 3; i++)
+	{
+		serviceDefenseTowers();
+		go(p1);
+		turn(direction(location(SpaceShip)));
+		move(16);
+		grab();
+		turn(180);
+		move(16);
+		if (this.load.category == KeyA)
+		{
+			go(A);
+		}
+		else if (this.load.category == KeyB)
+		{
+			go(B);
+		}
+		else if (this.load.category == KeyC)
+		{
+			go(C);
+		}
+		turn(direction(o.position));
+		drop();
+		move(-3);
+	}
+	
+	chargeCell();
+	serviceDefenseTowers();
+	goGrab(KeyD);
+	go(D);
+	turn(direction(o.position));
+	drop();
+	move(-3);
+	
+	Message("Please run Mission() from PhazerShooter");
+}
+
+public void object::navigateValley()
+{
+	SatCom com();
+	
+	object target,mushroom,mushrooms[];
+	point p,valleyPoints[];
+	point sp = location(SpaceShip);
+	int i,j;
+	
+	mushroom = search(GreenMushroom,sp);
+	mushrooms = sortMushrooms(sp);
+	
+	p = mid(sp,mushroom.position,15);
+	
+	j = 0;
+	valleyPoints[j] = p;
+	j++;
+	
+	for (i = 0; i < sizeof(mushrooms); i++)
+	{
+		mushroom = mushrooms[i];
+		p = findValleyPoint(mushroom.position,6,36);
+		valleyPoints[j] = p;
+		j++;
+	}
+	
+	p = valleyPoints[j-1];
+	p = findValleyPoint(p,6,36);
+	valleyPoints[j] = p;
+	j++;
+	
+	p = valleyPoints[j-1];
+	p = findValleyPoint(p,6,36);
+	valleyPoints[j] = p;
+	j++;
+	
+	p = valleyPoints[0];
+	plantFlag(p,GreenFlag);
+	go(p);
+	
+	for (i = 1; i < sizeof(valleyPoints); i++)
+	{
+		while (distance2Ant(this.position) <= com.safeAnt)
+		{
+			target = radar(com.ants,0,360,0,com.safeAnt);
+			motor(0,0);
+			PhazerAim(target);
+		}
+		
+		p = valleyPoints[i];
+		turn(direction(p));
+		go(p);
+		
+	}
+}
+
+public object[] object::sortMushrooms(point sp)
+{
+	object items[],mushrooms[];
+	items = radarall(GreenMushroom);
+	int n = sizeof(items);
+	int i,j,k;
+	
+	for (i = 0; i < n - 1; i++)
+	{
+		for (j = 0; j < n - i - 1; j++)
+		{
+			if (distance2d(sp, items[j].position) > distance2d(sp, items[j + 1].position))
+			{
+				// Swap items[j] and items[j + 1]
+				object temp = items[j];
+				items[j] = items[j + 1];
+				items[j + 1] = temp;
+			}
+		}
+	}
+	
+	k = 0;
+	for (i = 0; i < n; i++)
+	{
+		if (i == 0 || i == n-1)
+		{
+			mushrooms[k] = items[i];
+			k++;
+		}
+		else 
+		{
+			if (distance2d(sp,items[i].position) - distance2d(sp,mushrooms[k-1].position) >= 6)
+			{
+				mushrooms[k] = items[i];
+				k++;
+			}
+		}
+	}
+	
+	return mushrooms;
+}
+
+public point findValleyPoint(point mushroom, float radius, int points)
+{
+	float maxDis = -999999;
+	float minTopo = topo(mushroom);
+	float angle,dis,topoVal;
+	point p,bestPoint;
+	point sp = location(SpaceShip);
+	
+	for (int i = 0; i < points; i++)
+	{
+		angle = 360.0 * i / points;
+		
+		p.x = mushroom.x + radius * cos(angle);
+		p.y = mushroom.y + radius * sin(angle);
+		p.z = topo(p);
+		topoVal = p.z;
+		dis = distance2d(sp,p);
+		
+		//if (abs(topoVal - minTopo) < 0.1 && distance2GreenMushroom(p) >= radius && dis >= maxDis)
+		if (topoVal <= minTopo && distance2GreenMushroom(p) >= radius && dis >= maxDis)
+		{
+			bestPoint = p;
+			minTopo = topoVal;
+			maxDis = dis;
+		}
+	}
+	
+	return bestPoint;
+}
+
+public void object::FollowPhazer()
+{
+	object    item;              // info. about phazer
+	point     dest;              // position where to go
+	float     dist;              // distance to phazer
+	bool shieldOn = false;
+	point sp = location(SpaceShip);
+	item = radar(PhazerShooter);
+	if ( item == null )
+	{
+		message("No phazer found");
+		return;                  // stop the program
+	}
+	
+	while ( true )               // repeat forever
+	{
+		item = radar(PhazerShooter);// look for phazer
+		if ( item == null )  break;
+		
+		if (distance2GreenMushroom(this.position) < 15 && !shieldOn)
+		{
+			shieldOn = true;
+			shield(1, 15);               // activate the shield
+		}
+		
+		dist = distance2d(item.position, position);
+		if ( dist < 5 )
+		{                        // if closer than 5 m:
+			wait(1);             // wait
+		}
+		else                     // otherwise:
+		{ // Calculate a position 5 m before the phazer
+			dest.x = (item.position.x-position.x)*((dist-5)/dist)+position.x;
+			dest.y = (item.position.y-position.y)*((dist-5)/dist)+position.y;
+			dest.z = (item.position.z-position.z)*((dist-5)/dist)+position.z;
+			goto(dest, 0, 1, 1); // and go there
+		}
+		if (distance2d(sp, position) > 200)
+		{
+			shieldOn = false;
+			shield(0, 15);
+			break;
+		}
+	}
+}
