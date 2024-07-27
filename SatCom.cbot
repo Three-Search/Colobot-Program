@@ -1,5 +1,5 @@
 /*
-26 July 2024
+28 July 2024
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
@@ -1951,6 +1951,7 @@ public void object::repair()
 	com.returnCode = 1;
 	point p;
 	object repairCenter = radar(RepairCenter);
+	object peekBot;
 	
 	if (repairCenter == null)
 	{
@@ -1972,7 +1973,7 @@ public void object::repair()
 		}
 		else
 		{
-			Message("Goto RepairCenter");
+			Message("RepairCenter is in used, go nearby RepairCenter and wait for release");
 			p = randomFreePoint(repairCenter.position,10,30); 
 			go(p);
 		}
@@ -1980,10 +1981,16 @@ public void object::repair()
 	
 	while (true)
 	{
-		if (com.repairQueue.peek(this) == this)
+		peekBot = com.repairQueue.peek(this);
+		if (peekBot == this)
 		{
 			break;
 		}
+		else if (peekBot.energyCell == null || (peekBot.energyCell != null && peekBot.energyCell.energyLevel == 0))
+		{
+			com.repairQueue.dequeue(this);
+		}
+		
 		if (distance2Enemies(this.position) <= com.safeAnt)
 		{
 			if (category == WingedShooter || category == WingedOrgaShooter)
@@ -2022,6 +2029,7 @@ public void object::chargeCell()
 	point p;
 	object powerStation;
 	object cells[],cell,o;
+	object peekBot;
 	float dir;
 	float d;
 	float angle_difference;
@@ -2052,7 +2060,7 @@ public void object::chargeCell()
 		}
 		else
 		{
-			Message("Goto PowerStation");
+			Message("PowerStation is in used, go nearby PowerStation and wait for release");
 			p = randomFreePoint(powerStation.position,10,30); 
 			go(p);
 		}
@@ -2060,10 +2068,16 @@ public void object::chargeCell()
 	
 	while (true)
 	{
-		if (com.chargeQueue.peek(this) == this)
+		peekBot = com.chargeQueue.peek(this);
+		if (peekBot == this)
 		{
 			break;
 		}
+		else if (peekBot.energyCell == null || (peekBot.energyCell != null && peekBot.energyCell.energyLevel == 0))
+		{
+			com.chargeQueue.dequeue(this);
+		}
+		
 		if (distance2Enemies(this.position) <= com.safeAnt)
 		{
 			if (category == WingedShooter || category == WingedOrgaShooter)
@@ -3551,6 +3565,12 @@ public void object::aimAndFire(object target)
 		return;
 	}
 	
+	if (category == PhazerShooter)
+	{
+		PhazerAim(target);
+		return;
+	}
+	
 	if (category == WingedShooter || category == WingedOrgaShooter)
 	{
 		i = 0;
@@ -3715,7 +3735,7 @@ public bool object::checkLOS(point bot_position, point ant_position)
 {
 	SatCom com();
 	
-	if (!com.checkLOS || com.detectedWorm)
+	if (!com.checkLOS || com.detectedWorm || category == PhazerShooter)
 	{
 		return true;
 	}
@@ -4239,7 +4259,7 @@ public void object::landAttack()
 	i = 0;
 	last = this.position;
 	aim(0,0);
-	while (found(com.ants))
+	while (true)
 	{
 		if (category != PhazerShooter)
 		{
@@ -4300,23 +4320,17 @@ public void object::landAttack()
 			if (sizeof(enemies) >= 3)
 			{
 				//Message("Too many enemies ahead. Update target to nearest enemy");
-				if (category != PhazerShooter)
+				if (com.detectedQueen)
+				{
+					target = radar(antQueen);
+				}
+				else
 				{
 					target = radar(com.ants);
 				}
 			}
 			
 			dis = distance2d(this.position,target.position);
-			
-			if (category == PhazerShooter)
-			{
-				if (dis <= com.attackRange)
-				{
-					motor(0,0);
-					PhazerAim(target);
-				}
-				continue;
-			}
 			
 			//if (dis <= com.attackRange && -21 < angle && angle < 21)
 			if (dis <= com.attackRange)
@@ -4384,7 +4398,7 @@ public void object::landAttack()
 		}
 		else
 		{
-			wait(1);
+			break;
 		}
 	}
 	missionComplete();
@@ -4470,16 +4484,6 @@ public void object::landGuard(object center,float radius)
 			}
 			
 			dis = distance2d(this.position,target.position);
-			
-			if (category == PhazerShooter)
-			{
-				if (dis <= com.attackRange)
-				{
-					motor(0,0);
-					PhazerAim(target);
-				}
-				continue;
-			}
 			
 			//if (dis <= com.attackRange && -21 < angle && angle < 21)
 			if (dis <= com.attackRange)

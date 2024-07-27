@@ -1,6 +1,7 @@
 /*
 Load this program to Subber bot and run it. Then, run a program from Shielder bot to call Mission() function of the Subber bot.
-Astronaut assistance is needed to load PowerCell to the first DefenseTower and the WingedGrabber as Subber could not load PowerCell to others.
+Astronaut assistance is needed to load PowerCell to the first DefenseTower and the WingedGrabber as Subber can not load PowerCell to others.
+When the Vault is opened and the PhazerShooter bot is accessible, run a program from the PhazerShooter bot to call Mission() function of the Subber bot.
 This mission is very long and involves many complicated tasks. Bots will wait to coordinate with each other, so please be patient when you see a bot waiting.
 */
 
