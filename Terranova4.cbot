@@ -36,10 +36,7 @@ extern void object::Terranova4()
 	waitForAvailable(PowerStation);
 	chargeCell();
 	p = aheadPoint(radar(BotFactory),12,90);
-	moveObjToObj(TitaniumOre,Converter);
-	waitForAvailable(Titanium);
-	moveObjToPlace(Titanium,p);
-	Build(DefenseTower,location(Titanium));
+	Build(DefenseTower,p);
 	chargeCell();
 	go(TitaniumOre);
 	Build(WingedOrgaShooter,"Mission()");
@@ -272,13 +269,10 @@ public void object::PhazerMission()
 	
 	com.bools[2] = true;
 	
-	com.safeQueen = 40;
+	com.safeQueen = 45;
 	navigateValley();
 	com.safeQueen = 80;
-	while (found(com.enemies))
-	{
-		attack();
-	}
+	attack();
 	
 	missionComplete();
 }
@@ -288,10 +282,20 @@ public void object::ShootMission()
 	SatCom com();
 	
 	com.safeTopo = 1;
-	com.safeFlatGround = 0.5;
+	com.safeFlatGround = 0;
+	
+	point p;
+	
+	p = location(KeyD);
 	
 	if (category == WingedOrgaShooter)
 	{
+		Message("Clear area around KeyD");
+		while (distance2d(position,p) > com.safeAnt*2)
+		{
+			fly(p);
+		}
+		com.shieldThreshold = 0.3;
 		airAttack(radar(KeyD),150);
 		Message("Area around KeyD is clear of enemies. WingedGrabber can collect KeyD for opening Vault");
 		camerafocus(radar(WingedGrabber));
@@ -329,8 +333,8 @@ public void object::openVault()
 		turn(direction(location(SpaceShip)));
 		move(16);
 		grab();
-		turn(180);
-		move(16);
+		turn(direction(p1));
+		move(8);
 		if (this.load.category == KeyA)
 		{
 			go(A);
@@ -356,7 +360,9 @@ public void object::openVault()
 	drop();
 	move(-3);
 	
+	waitForAvailable(PhazerShooter);
 	Message("Please run Mission() from PhazerShooter");
+	camerafocus(radar(PhazerShooter));
 }
 
 public void object::navigateValley()
