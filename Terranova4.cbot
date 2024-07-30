@@ -269,7 +269,7 @@ public void object::PhazerMission()
 	
 	com.bools[2] = true;
 	
-	com.safeQueen = 45;
+	com.safeQueen = 40;
 	navigateValley();
 	com.safeQueen = 80;
 	attack();

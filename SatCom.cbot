@@ -217,11 +217,12 @@ public class SatCom
 	static float safeQueen = 80;
 	static float safeRoot = 30;
 	static float safeTopo = 1.5;
-	static float safeFlatGround = 0;
+	static float safeFlatGround = 0.1;
 	static float temperatureThreshold = 0.7;
 	static float energyThreshold = 0.4;
 	static float shieldThreshold = 0.7;
 	static float attackRange = 45;
+	static float phazerAttackRange = 60;
 	static bool checkLOS = true;
 	static bool plantFlag = false;
 	static float minAimAngle = -19;
@@ -3555,12 +3556,13 @@ public void object::aimAndFire(object target)
 {
 	errmode(0);
 	SatCom com();
-	float dir,angle;
+	float dir,angle,dis;
 	int i;
 	float z;
 	float time;
 	
-	if (target == null || target.dead || distance2d(this.position,target.position) > com.attackRange)
+	dis = distance2d(this.position,target.position);
+	if (target == null || target.dead || (category != PhazerShooter && dis > com.attackRange) || (category == PhazerShooter && dis > com.safeQueen))
 	{
 		return;
 	}
@@ -4255,6 +4257,8 @@ public void object::landAttack()
 	
 	antQueen[0] = AlienAnt;
 	antQueen[1] = AlienQueen;
+	antQueen[2] = AlienWasp;
+	antQueen[3] = AlienSpider;
 	
 	i = 0;
 	last = this.position;
@@ -4333,7 +4337,7 @@ public void object::landAttack()
 			dis = distance2d(this.position,target.position);
 			
 			//if (dis <= com.attackRange && -21 < angle && angle < 21)
-			if (dis <= com.attackRange)
+			if ((dis <= com.attackRange) || (this.category == PhazerShooter && dis <= com.phazerAttackRange))
 			{
 				if (!checkLOS(target.position))
 				{
@@ -4486,7 +4490,7 @@ public void object::landGuard(object center,float radius)
 			dis = distance2d(this.position,target.position);
 			
 			//if (dis <= com.attackRange && -21 < angle && angle < 21)
-			if (dis <= com.attackRange)
+			if ((dis <= com.attackRange) || (this.category == PhazerShooter && dis <= com.phazerAttackRange))
 			{
 				if (!checkLOS(target.position))
 				{
@@ -4619,7 +4623,6 @@ public void object::PhazerAim(object target)
 	
 	SatCom com();
 	
-	//float scanRange = 150; // scan for targets within this radius
 	float scanRange = com.safeQueen; // scan for targets within this radius
 	
 	// Platform specific parameters
