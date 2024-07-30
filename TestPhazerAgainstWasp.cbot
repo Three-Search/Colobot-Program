@@ -1,0 +1,46 @@
+/*
+Load this program into a WheeledGrabber bot on Volcano Analysis level and run it. Enjoy watching PhazerShooter never misses a Wasp.
+*/
+
+extern void object::TestPhazerAgainstWasp()
+{
+	SatCom com();
+	
+	int bot = PhazerShooter;
+	int numBot = 1;
+	
+	if (radar(RepairCenter) == null)
+	{
+		produce(flatSpace(),0,RepairCenter);
+	}
+	
+	while (found(com.enemies))
+	{
+		if (!found(bot))
+		{
+			for (int i = 0; i < numBot; i++)
+			{
+				produce(flatSpace(),0,bot,"Shooter.cbot",100);
+			}
+		}
+		wait(1);
+	}
+	
+}
+
+public void object::Shooter()
+{
+	SatCom com();
+	object target;
+	
+	com.safeQueen = 160;
+	
+	camerafocus(this);
+	Message("Wait for AlienWasp");
+	while (true)
+	{
+		target = radar(AlienWasp);
+		PhazerAim(target);
+		wait(1);
+	}
+}
