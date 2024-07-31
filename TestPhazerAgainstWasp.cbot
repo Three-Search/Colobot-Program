@@ -9,23 +9,44 @@ extern void object::TestPhazerAgainstWasp()
 	int bot = PhazerShooter;
 	int numBot = 1;
 	
-	if (radar(RepairCenter) == null)
-	{
-		produce(flatSpace(),0,RepairCenter);
-	}
+	int numWasps = 100; // create 50 Wasp and 50 OrgaMatter
+	float angleIncrement = 360.0 / 60;
+	float angle;
+	float radius = 300;
+	object o;
+	point pi,sp;
+	int alien;
 	
-	while (found(com.enemies))
+	o = radar(SpaceShip);
+	sp = o.position;
+	
+	produce(flatSpace(),0,bot,"Shooter.cbot",100);
+	
+	for (int i = 0; i < numWasps; i++)
 	{
-		if (!found(bot))
+		if (i % 2 == 0)
 		{
-			for (int i = 0; i < numBot; i++)
-			{
-				produce(flatSpace(),0,bot,"Shooter.cbot",100);
-			}
+			alien = AlienWasp;
 		}
-		wait(1);
+		else
+		{
+			alien = OrgaMatter;
+		}
+		
+		angle = angleIncrement * i;
+		pi.x = sp.x + radius * cos(angle);
+		pi.y = sp.y + radius * sin(angle);
+		pi.z = topo(pi);
+		produce(pi,0,alien,"wasp01.txt");
+		if (alien == OrgaMatter)
+		{
+			wait(i*10*rand());
+		}
+		if ((i+1) % 36 == 0)
+		{
+			radius = radius + 10;
+		}
 	}
-	
 }
 
 public void object::Shooter()
@@ -37,10 +58,11 @@ public void object::Shooter()
 	
 	camerafocus(this);
 	Message("Wait for AlienWasp");
+	
 	while (true)
 	{
 		target = radar(AlienWasp);
 		PhazerAim(target);
-		wait(1);
+		motor(0,0);
 	}
 }
