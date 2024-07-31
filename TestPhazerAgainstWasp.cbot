@@ -40,7 +40,7 @@ extern void object::TestPhazerAgainstWasp()
 		produce(pi,0,alien,"wasp01.txt");
 		if (alien == OrgaMatter)
 		{
-			wait(i*10*rand());
+			wait(10*rand());
 		}
 		if ((i+1) % 36 == 0)
 		{
