@@ -10,11 +10,12 @@ extern void object::TestPhazerAgainstWasp()
 	int numBot = 5;
 	
 	int numWasps = 500; // create 500 Wasp and 1000 OrgaMatter
+	int remain;
 	float angleIncrement = 360.0 / 60;
 	float angle;
 	float radius = 120;
 	object o;
-	point pi,sp,pj;
+	point pi,sp,pj,p;
 	int alien;
 	
 	o = radar(SpaceShip);
@@ -22,9 +23,14 @@ extern void object::TestPhazerAgainstWasp()
 	
 	for (int i = 0; i < numBot; i++)
 	{
-		produce(flatSpace(),0,bot,"Shooter.cbot",100);
+		p = flatSpace();
+		produce(p,0,PowerStation);
+		produce(p,0,bot,"Shooter.cbot",1);
 		flatSpace();
 	}
+	
+	remain = numWasps;
+	Message("Total "+numWasps+" AlienWasps will attack");
 	
 	for (int i = 0; i < numWasps; i++)
 	{
@@ -49,6 +55,8 @@ extern void object::TestPhazerAgainstWasp()
 		}
 		
 		produce(pi,0,AlienWasp,"wasp01.txt");
+		remain--;
+		Message(remain+" AlienWasps remain");
 		pj.x = pi.x + 4;
 		pj.y = pi.y + 4;
 		pj.z = topo(pj);
@@ -74,8 +82,6 @@ public void object::Shooter()
 	com.safeQueen = 160;
 	
 	camerafocus(this);
-	Message("Wait for AlienWasp");
-	
 	while (true)
 	{
 		target = radar(com.enemies);
