@@ -7,14 +7,14 @@ extern void object::TestPhazerAgainstWasp()
 	SatCom com();
 	
 	int bot = PhazerShooter;
-	int numBot = 10;
+	int numBot = 5;
 	
-	int numWasps = 500; // create 50 Wasp and 50 OrgaMatter
+	int numWasps = 500; // create 500 Wasp and 1000 OrgaMatter
 	float angleIncrement = 360.0 / 60;
 	float angle;
-	float radius = 300;
+	float radius = 120;
 	object o;
-	point pi,sp;
+	point pi,sp,pj;
 	int alien;
 	
 	o = radar(SpaceShip);
@@ -23,6 +23,7 @@ extern void object::TestPhazerAgainstWasp()
 	for (int i = 0; i < numBot; i++)
 	{
 		produce(flatSpace(),0,bot,"Shooter.cbot",100);
+		flatSpace();
 	}
 	
 	for (int i = 0; i < numWasps; i++)
@@ -40,14 +41,27 @@ extern void object::TestPhazerAgainstWasp()
 		pi.x = sp.x + radius * cos(angle);
 		pi.y = sp.y + radius * sin(angle);
 		pi.z = topo(pi);
-		produce(pi,0,alien,"wasp01.txt");
-		if (alien == OrgaMatter)
+		
+		if (pi.z < 0)
 		{
-			wait(10*rand());
+			numWasps++;
+			continue;
 		}
-		if ((i+1) % 36 == 0)
+		
+		produce(pi,0,AlienWasp,"wasp01.txt");
+		pj.x = pi.x + 4;
+		pj.y = pi.y + 4;
+		pj.z = topo(pj);
+		produce(pj,0,OrgaMatter);
+		wait(1);
+		pj.x = pi.x - 4;
+		pj.y = pi.y - 4;
+		pj.z = topo(pj);
+		produce(pj,0,OrgaMatter);
+		wait(10*rand());
+		if ((i+1) % 72 == 0)
 		{
-			radius = radius + 10;
+			radius = radius + 2;
 		}
 	}
 }
@@ -64,7 +78,7 @@ public void object::Shooter()
 	
 	while (true)
 	{
-		target = radar(AlienWasp);
+		target = radar(com.enemies);
 		PhazerAim(target);
 		motor(0,0);
 	}
