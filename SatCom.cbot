@@ -624,6 +624,11 @@ public class SatCom
 		RADII[904] = 02.00; //Satelite Dish; Derelict of Apollo Mission
 		RADII[910] = 03.75; //Home
 		
+		for (int i = 0; i < 911; i++)
+		{
+			CATEGORY_NAMES[i] = "Undefined Category";
+		}
+		
 		CATEGORY_NAMES[2] = "Portico";
 		CATEGORY_NAMES[3] = "SpaceShip";
 		CATEGORY_NAMES[4] = "Derrick";
@@ -720,6 +725,9 @@ public class SatCom
 		CATEGORY_NAMES[211] = "TargetBot";
 		CATEGORY_NAMES[212] = "Scribbler";
 		CATEGORY_NAMES[213] = "MissionController";
+		CATEGORY_NAMES[220] = "WheeledBuilder";
+		CATEGORY_NAMES[221] = "TrackedBuilder";
+		CATEGORY_NAMES[222] = "WingedBuilder";
 		CATEGORY_NAMES[250] = "WayPoint";
 		CATEGORY_NAMES[260] = "BlueFlag";
 		CATEGORY_NAMES[261] = "RedFlag";
@@ -2441,7 +2449,13 @@ public void object::loadUraniumOre(int c)
 public string object::catName(int c)
 {
 	SatCom com();
-	return com.CATEGORY_NAMES[c];
+	
+	if (0 <= c && c <= 910)
+	{
+		return com.CATEGORY_NAMES[c];
+	}
+	
+	return "Undefined Category";
 }
 
 public bool object::found(int c)
@@ -2889,6 +2903,10 @@ public void object::Build(int c, string s)
 	else if (c == LeggedGrabber)
 	{
 		waitForResearch(ResearchLegged);
+	}
+	else if (c == TrackedBuilder)
+	{
+		waitForResearch(ResearchBuilder);
 	}
 	
 	Message("Building "+catName(c));
