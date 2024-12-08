@@ -1,5 +1,5 @@
 /*
-28 July 2024
+08 December 2024
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
@@ -251,6 +251,23 @@ public class SatCom
 	
 	public void SatCom()
 	{
+		if (radar(WheeledBuilder) != null)
+		{
+			builderBotCategory = WheeledBuilder;
+		}
+		else if (radar(TrackedBuilder) != null)
+		{
+			builderBotCategory = TrackedBuilder;
+		}
+		else if (radar(WingedBuilder) != null)
+		{
+			builderBotCategory = WingedBuilder;
+		}
+		else if (radar(LeggedBuilder) != null)
+		{
+			builderBotCategory = LeggedBuilder;
+		}
+		
 		if (staticInited)
 		{
 			/*
@@ -728,6 +745,7 @@ public class SatCom
 		CATEGORY_NAMES[220] = "WheeledBuilder";
 		CATEGORY_NAMES[221] = "TrackedBuilder";
 		CATEGORY_NAMES[222] = "WingedBuilder";
+		CATEGORY_NAMES[223] = "LeggedBuilder";
 		CATEGORY_NAMES[250] = "WayPoint";
 		CATEGORY_NAMES[260] = "BlueFlag";
 		CATEGORY_NAMES[261] = "RedFlag";
@@ -1671,12 +1689,21 @@ public void object::waitForAvailable(int c)
 	int i = 0;
 	if (c == NuclearCell)
 	{
-		if (found(NuclearCell))
-		{
-			return;
-		}
 		o = radar(NuclearPlant);
 		while (isbusy(o) || o.energyCell == null || o.energyCell.category != NuclearCell)
+		{
+			if (i == 0)
+			{
+				Message("Wait for "+ catName(c) +" to be available");
+			}
+			i++;
+			wait(5);
+		}
+	}
+	else if (c == PowerCell)
+	{
+		o = radar(PowerPlant);
+		while (isbusy(o) || o.energyCell == null || o.energyCell.category != PowerCell)
 		{
 			if (i == 0)
 			{
