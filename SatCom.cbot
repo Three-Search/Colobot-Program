@@ -2538,6 +2538,10 @@ public void object::avoidNearestObject(float m)
 	obj[i++] = TrackedGrabber;
 	obj[i++] = WingedGrabber;
 	obj[i++] = LeggedGrabber;
+	obj[i++] = WheeledBuilder;
+	obj[i++] = TrackedBuilder;
+	obj[i++] = WingedBuilder;
+	obj[i++] = LeggedBuilder;
 	obj[i++] = WheeledShooter;
 	obj[i++] = TrackedShooter;
 	obj[i++] = WingedShooter;
