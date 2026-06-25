@@ -4766,7 +4766,7 @@ public void object::PhazerAim(object target)
 			if (deltaBearing > 180)
 			{
 				deltaBearing -= 360;
-			}			
+			}
 			deltaRange = range - oldRange;
 			deltaHeight = height - oldHeight;
 			deltaTime = time - oldTime;
@@ -4907,7 +4907,7 @@ public void object::PhazerAim(object target)
 			}
 			else
 			{
-				aim(a); // weapon elevation	
+				aim(a); // weapon elevation
 			}
 			
 			turnRate = (deltaBearing + azimuth / 5) / deltaTime; // rotate with target
@@ -4947,12 +4947,15 @@ public void object::LandAim(object target)
 	
 	// Platform specific parameters
 	float minAngle = -20; // minimum gun elevation relative to platform
-	float maxAngle = 20; // maximum gun elevation relative to platform
+	float maxAngle = 45; // maximum gun elevation relative to platform
 	float weaponHeight = 1.5; // height of weapon above platform
 	float weaponOffset = 1.5; // weapon is this amount in front of platform
 	float maxTurnRate = 54; // maximum turn rate
 	
+	// Ballistic parameters
 	float v0 = 50; // muzzle velocity (m / s)
+	float g = 50; // gravitation (m / s^2)
+	float bc = v0 * v0 / g; // ballistic constant (max range at equal height)
 	
 	// Variables to track target (cylindrical coordinates)
 	float bearing, range, height, time, dis;
