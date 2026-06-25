@@ -1,5 +1,5 @@
 /*
-08 December 2024
+25 June 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
@@ -2704,6 +2704,10 @@ public point object::getSpaceOnShip()
 	obj[i++] = TrackedGrabber;
 	obj[i++] = WingedGrabber;
 	obj[i++] = LeggedGrabber;
+	obj[i++] = WheeledBuilder;
+	obj[i++] = TrackedBuilder;
+	obj[i++] = WingedBuilder;
+	obj[i++] = LeggedBuilder;
 	obj[i++] = WheeledShooter;
 	obj[i++] = TrackedShooter;
 	obj[i++] = WingedShooter;
@@ -3601,6 +3605,7 @@ public void object::moveAndDestroy(object target)
 		aim(0,0);
 	}
 }
+
 public void object::aimAndFire(object target)
 {
 	errmode(0);
@@ -3619,6 +3624,12 @@ public void object::aimAndFire(object target)
 	if (category == PhazerShooter)
 	{
 		PhazerAim(target);
+		return;
+	}
+	
+	if (category == WheeledShooter || category == TrackedShooter || category == LeggedShooter || category == WheeledOrgaShooter || category == TrackedOrgaShooter || category == LeggedOrgaShooter)
+	{
+		LandAim(target);
 		return;
 	}
 	
@@ -4330,10 +4341,10 @@ public void object::landAttack()
 		
 		if (target != null)
 		{
-			o = radar(Any,0,140,1.5,12);
+			o = radar(Any,0,140,1.5,6);
 			if (o == null)
 			{
-				o = radar(Any,0,90,1.5,5);
+				o = radar(Any,0,90,1.5,3);
 			}
 			if (o != null && o.category != target.category && distance2d(this.position,target.position) > com.safeAnt)
 			{
@@ -4905,3 +4916,183 @@ public void object::PhazerAim(object target)
 		}
 	}
 }
+
+public void object::LandAim(object target)
+{
+	errmode(0);
+
+	SatCom com();
+
+	float scanRange = com.safeAnt;
+
+	float maxTurnRate = 90;
+
+	float bearing, range, height, time;
+	float deltaBearing, deltaRange, deltaHeight, deltaTime;
+
+	float oldBearing;
+	float oldRange;
+	float oldHeight;
+	float oldTime;
+
+	float futureBearing;
+	float futureRange;
+	float futureHeight;
+
+	float leadTime;
+	float projectileSpeed = 80;
+
+	float azimuth;
+	float elevation;
+
+	float turnRate;
+	float motorOutput;
+
+	float pitchAz;
+	float rollAz;
+	float a;
+	float b;
+	float c;
+	float d;
+	float x;
+	float corr;
+
+	float fireTime;
+
+	object current;
+
+	if (target == null || target.dead)
+	{
+		return;
+	}
+
+	oldBearing = orientation + direction(target.position);
+	oldRange = distance2d(position,target.position);
+	oldHeight = target.position.z - position.z;
+	oldTime = abstime();
+
+	leadTime = oldRange / projectileSpeed;
+
+	fireTime = abstime() + 0.2;
+
+	while (true)
+	{
+		current = radar(com.enemies,0,360,0,scanRange);
+
+		if (target == null || target.dead || current == null || current != target)
+		{
+			break;
+		}
+
+		bearing = orientation + direction(target.position);
+		range = distance2d(position,target.position);
+		height = target.position.z - position.z;
+		time = abstime();
+
+		deltaBearing = bearing - oldBearing;
+
+		if (deltaBearing < -180)
+		{
+			deltaBearing += 360;
+		}
+		if (deltaBearing > 180)
+		{
+			deltaBearing -= 360;
+		}
+
+		deltaRange = range - oldRange;
+		deltaHeight = height - oldHeight;
+		deltaTime = time - oldTime;
+
+		if (deltaTime <= 0)
+		{
+			deltaTime = 0.001;
+		}
+
+		oldBearing = bearing;
+		oldRange = range;
+		oldHeight = height;
+		oldTime = time;
+
+		// Predict future target position
+		float t = leadTime / deltaTime;
+
+		futureBearing = bearing + t * deltaBearing;
+		futureRange = range + t * deltaRange;
+		futureHeight = height + t * deltaHeight;
+
+		azimuth = futureBearing - orientation;
+
+		if (azimuth < -180)
+		{
+			azimuth += 360;
+		}
+		if (azimuth > 180)
+		{
+			azimuth -= 360;
+		}
+
+		elevation = atan2(futureHeight,futureRange);
+
+		leadTime = futureRange / projectileSpeed;
+
+		// Same slope compensation used by PhazerAim
+		pitchAz = pitch*cos(azimuth) - roll*sin(azimuth);
+		rollAz = roll*cos(azimuth) + pitch*sin(azimuth);
+
+		b = elevation - pitchAz;
+
+		x = sin(b)*cos(rollAz);
+		if (x < -1) x = -1;
+		if (x > 1) x = 1;
+
+		a = asin(x);
+
+		x = cos(b)/cos(a);
+		if (x < -1) x = -1;
+		if (x > 1) x = 1;
+
+		c = acos(x);
+
+		if (b < 0)
+		{
+			c = -c;
+		}
+
+		x = sin(c)*sin(rollAz);
+		if (x < -1) x = -1;
+		if (x > 1) x = 1;
+
+		d = asin(x);
+
+		x = cos(c)/cos(d);
+		if (x < -1) x = -1;
+		if (x > 1) x = 1;
+
+		corr = -acos(x);
+
+		if (d < 0)
+		{
+			corr = -corr;
+		}
+
+		azimuth += corr;
+
+		// Aim gun
+		aim(a);
+
+		// Phazer-style predictive tracking
+		turnRate = (deltaBearing + azimuth/5) / deltaTime;
+		motorOutput = 0.5 * turnRate / maxTurnRate;
+
+		motor(-motorOutput,motorOutput);
+
+		// Fire only when solution is stable
+		if (abs(azimuth) < 2 && abs(a) < 45 && fireTime < abstime())
+		{
+			fire(0.05);
+			fireTime = abstime() + leadTime + 0.05;
+		}
+	}
+}
+
