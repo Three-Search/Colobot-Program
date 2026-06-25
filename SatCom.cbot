@@ -225,8 +225,8 @@ public class SatCom
 	static float phazerAttackRange = 60;
 	static bool checkLOS = true;
 	static bool plantFlag = false;
-	static float minAimAngle = -19;
-	static float maxAimAngle = -5;
+	static float minAimAngle = -15;
+	static float maxAimAngle = 18;
 	
 	static object me;
 	static object spaceShip;
@@ -1295,6 +1295,7 @@ public void object::fly(point p)
 	float dif;
 	float ang;
 	float dir;
+	float jetPower;
 	point sensor,left,right;
 	object root,o;
 	
@@ -1304,16 +1305,37 @@ public void object::fly(point p)
 	}
 	
 	dis = distance(this.position,p);
-	dif = p.z-this.position.z;
-	ang = asin(dif/dis);
+	if (dis < 1)
+	{
+		dis = 1; // avoid division problems when close to target
+	}
+	dif = this.position.z-p.z;
 	if (radar(SpaceShip,0,90,0,20) != null && this.position.z >= com.spaceShip.position.z + 10)
 	{
-		jet(-0.05);
+		jetPower = -0.05;
 	}
 	else
 	{
-		jet(1-(ang/-20));
+		if (dis > com.attackRange)
+		{
+			jetPower = (p.z + 8 - this.position.z) / 1000;
+		}
+		else
+		{
+			ang = asin(dif / dis);
+			jetPower = (ang - 15) / 1000;
+		}
 	}
+	
+	if (jetPower > 1)
+	{
+		jetPower = 1;
+	}
+	if (jetPower < -1)
+	{
+		jetPower = -1;
+	}
+	jet(jetPower);
 	
 	if (com.detectedGraviPlant)
 	{
@@ -1393,21 +1415,14 @@ public void object::fly(object o)
 	com.returnMessage = category+": fly(object o) start";
 	com.returnCode = 1;
 	int i;
-	
-	if (o == null)
+	if (o == null || o.dead)
 	{
 		com.returnMessage = category+": Object null, could not fly to object";
 		com.returnCode = 1;
 		return;
 	}
 	
-	p = aheadPoint(o,5,0);
-	p.z = topo(p);
-	turn(direction(p));
-	float dis = distance(this.position,p);
-	float dif = p.z-this.position.z;
-	float ang = asin(dif/dis);
-	jet(1-(ang/-20));
+	turn(direction(o.position));
 	
 	i = 0;
 	last = this.position;
@@ -3610,7 +3625,7 @@ public void object::aimAndFire(object target)
 {
 	errmode(0);
 	SatCom com();
-	float dir,angle,dis;
+	float dir,angle,dis,dif,jetPower;
 	int i;
 	float z;
 	float time;
@@ -3635,32 +3650,133 @@ public void object::aimAndFire(object target)
 	
 	if (category == WingedShooter || category == WingedOrgaShooter)
 	{
-		i = 0;
-		z = this.position.z;
-		time = abstime();
-		do
-		{
-			i++;
-			angle = -atan2(this.position.z - target.position.z,distance(this.position,target.position)) - this.pitch;
-			if (angle > com.maxAimAngle)
-			{
-				jet(0.4);
-			}
-			else if (angle < com.minAimAngle)
-			{
-				jet(-0.4);
-			}
-			
-			if (abstime() - time > 3)
-			{
-				break;
-			}
-		}
-		while (angle < com.minAimAngle || angle > com.maxAimAngle);
-		jet(0);
+		AirAim(target);
+		return;
+	}
+}
+
+public void object::AirAim(object target)
+{
+	errmode(0);
+	
+	SatCom com();
+	
+	float dir, angle;
+	int i;
+	
+	// Prediction variables
+	float bearing;
+	float range;
+	float height;
+	float time;
+	
+	float oldBearing;
+	float oldRange;
+	float oldHeight;
+	float oldTime;
+	
+	float deltaBearing;
+	float deltaRange;
+	float deltaHeight;
+	float deltaTime;
+	
+	float azimuth;
+	float rt;
+	float zt;
+	float it;
+	float t;
+	
+	float v0 = 50; // muzzle velocity
+	
+	if (target == null || target.dead || distance2d(this.position,target.position) > com.attackRange)
+	{
+		return;
 	}
 	
-	dir = direction(target.position);
+	// Initialize predictor
+	oldBearing = direction(target.position);
+	oldRange = distance2d(this.position,target.position);
+	oldHeight = target.position.z - this.position.z;
+	oldTime = abstime();
+	
+	it = oldRange / v0;
+	
+	// Stabilize altitude
+	i = 0;
+	do
+	{
+		i++;
+		
+		angle = -atan2(this.position.z - target.position.z,distance(this.position,target.position)) - this.pitch;
+		
+		if (angle > com.maxAimAngle)
+		{
+			jet(0.35);
+		}
+		else if (angle < com.minAimAngle)
+		{
+			jet(-0.4);
+		}
+		
+		wait(0.03);
+	}
+	while ((angle < com.minAimAngle || angle > com.maxAimAngle) && i < 100);
+	
+	jet(0);
+	
+	if (target == null || target.dead)
+	{
+		return;
+	}
+	
+	// Collect target data
+	bearing = direction(target.position);
+	range = distance2d(this.position,target.position);
+	height = target.position.z - this.position.z;
+	time = abstime();
+	
+	// Calculate target motion
+	deltaBearing = bearing - oldBearing;
+	if (deltaBearing < -180)
+	{
+		deltaBearing += 360;
+	}
+	if (deltaBearing > 180)
+	{
+		deltaBearing -= 360;
+	}
+	
+	deltaRange = range - oldRange;
+	deltaHeight = height - oldHeight;
+	
+	deltaTime = time - oldTime;
+	if (deltaTime == 0)
+	{
+		deltaTime = 0.001;
+	}
+	
+	// Predict intercept point
+	t = it / deltaTime;
+	
+	azimuth = bearing + t * deltaBearing;
+	
+	rt = range + t * deltaRange;
+	zt = height + t * deltaHeight;
+	if (rt < 0.001)
+	{
+		rt = 0.001;
+	}
+	
+	it = sqrt(rt*rt + zt*zt) / v0;
+	if (it < 0.05)
+	{
+		it = 0.05;
+	}
+	
+	// Aim at predicted intercept point
+	dir = azimuth;
+	angle = atan2(zt, rt) - this.pitch;
+	
 	if (dir > 40)
 	{
 		turn(dir - 40);
@@ -3670,70 +3786,13 @@ public void object::aimAndFire(object target)
 		turn(dir + 40);
 	}
 	
-	point pos = target.position;
-	float dist = distance2d(pos,this.position);
-	float height = this.position.z - pos.z;
-	float ipitch = atan2(height,dist);
-	ipitch += this.pitch; //compensate
-	float iangle = direction(pos);
-	//here we rotate ipitch and iangle by roll to compensate for that part of the scheme
-	float aimpitch = ipitch*cos(roll) - iangle*sin(roll);
-	float aimangle = iangle*cos(roll) + ipitch*sin(roll);
-	aim(-aimpitch,-aimangle);
+	dir = azimuth;
 	
 	if (target != null && !target.dead)
 	{
+		aim(angle, -dir);
 		fire(0.05);
-		wait(0.1);
-	}
-}
-
-public void object::airFire(object target)
-{
-	errmode(0);
-	
-	SatCom com();
-	
-	float dir,angle;
-	int i;
-	
-	if (target == null || target.dead || distance2d(this.position,target.position) > com.attackRange)
-	{
-		return;
-	}
-	
-	i = 0;
-	do
-	{
-		i++;
-		angle = -atan2(this.position.z - target.position.z,distance(this.position,target.position)) - this.pitch;
-		if (angle > com.maxAimAngle)
-		{
-			jet(0.35);
-		}
-		else if (angle < com.minAimAngle)
-		{
-			jet(-0.4);
-		}
-	}
-	while (angle < com.minAimAngle || angle > com.maxAimAngle);
-	
-	jet(0);
-	dir = direction(target.position);
-	angle = -atan2(this.position.z - target.position.z,distance(this.position,target.position)) - this.pitch;
-	if (dir > 40)
-	{
-		turn(dir - 40);
-	}
-	else if(dir < -40)
-	{
-		turn(dir + 40);
-	}
-	aim(angle,-dir);
-	if (target != null && !target.dead)
-	{
-		fire(0.05);
-		wait(0.1);
+		wait(0.2);
 	}
 }
 
