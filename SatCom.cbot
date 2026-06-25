@@ -221,7 +221,7 @@ public class SatCom
 	static float temperatureThreshold = 0.7;
 	static float energyThreshold = 0.4;
 	static float shieldThreshold = 0.7;
-	static float attackRange = 45;
+	static float attackRange = 42;
 	static float phazerAttackRange = 60;
 	static bool checkLOS = true;
 	static bool plantFlag = false;
@@ -4759,6 +4759,14 @@ public void object::PhazerAim(object target)
 			
 			// Calculate differences
 			deltaBearing = bearing - oldBearing;
+			if (deltaBearing < -180)
+			{
+				deltaBearing += 360;
+			}
+			if (deltaBearing > 180)
+			{
+				deltaBearing -= 360;
+			}			
 			deltaRange = range - oldRange;
 			deltaHeight = height - oldHeight;
 			deltaTime = time - oldTime;
@@ -4786,7 +4794,7 @@ public void object::PhazerAim(object target)
 			}
 			zt = height + t * deltaHeight - cos(pitch) * cos(roll) * weaponHeight; // intercept height
 			rt = range + t * deltaRange - weaponOffset * cos(azimuth) * cos(pitch); // intercept range
-			if (rt == 0.0)
+			if (rt < 0.001)
 			{
 				rt = 0.001;
 			}
@@ -4809,6 +4817,10 @@ public void object::PhazerAim(object target)
 			}
 			
 			it = rt / (v0 * cosAngle); // intercept time (estimate for next pass)
+			if (it < 0.05)
+			{
+				it = 0.05;
+			}
 			
 			// Slope-correction
 			pitchAz = pitch * cos(azimuth) - roll * sin(azimuth); // pitch at target azimuth
@@ -4900,14 +4912,22 @@ public void object::PhazerAim(object target)
 			
 			turnRate = (deltaBearing + azimuth / 5) / deltaTime; // rotate with target
 			motorOutput = 0.5 * turnRate / maxTurnRate; // calculate motor output
+			if (motorOutput > 1)
+			{
+				motorOutput = 1;
+			}
+			if (motorOutput < -1)
+			{
+				motorOutput = -1;
+			}
 			motor(-motorOutput, motorOutput); // apply turn rate
 			
+			dis = distance2d(this.position, target.position);
 			// Fire if target is within weapon envelope
-			if (D >= 0 && a > minAngle - 2 && a < maxAngle + 2 && azimuth > -2 && azimuth < 2 && fireTime < abstime())
+			if (D >= 0 && dis <= com.phazerAttackRange && a > minAngle - 2 && a < maxAngle + 2 && azimuth > -2 && azimuth < 2 && fireTime < abstime())
 			{
 				if (target != null && !target.dead)
 				{
-					dis = distance(this.position, target.position);
 					fire(0.2);
 					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
 					Message("Firing at range " + dis + " m.");
@@ -4920,34 +4940,42 @@ public void object::PhazerAim(object target)
 public void object::LandAim(object target)
 {
 	errmode(0);
-
+	
 	SatCom com();
-
-	float scanRange = com.safeAnt;
-
-	float maxTurnRate = 90;
-
-	float bearing, range, height, time;
+	
+	float scanRange = com.safeAnt; // scan for targets within this radius
+	
+	// Platform specific parameters
+	float minAngle = -20; // minimum gun elevation relative to platform
+	float maxAngle = 20; // maximum gun elevation relative to platform
+	float weaponHeight = 1.5; // height of weapon above platform
+	float weaponOffset = 1.5; // weapon is this amount in front of platform
+	float maxTurnRate = 54; // maximum turn rate
+	
+	float v0 = 50; // muzzle velocity (m / s)
+	
+	// Variables to track target (cylindrical coordinates)
+	float bearing, range, height, time, dis;
 	float deltaBearing, deltaRange, deltaHeight, deltaTime;
-
+	
+	// Old variables
 	float oldBearing;
 	float oldRange;
 	float oldHeight;
 	float oldTime;
-
-	float futureBearing;
-	float futureRange;
-	float futureHeight;
-
-	float leadTime;
-	float projectileSpeed = 80;
-
+	
+	// Variables needed for target solution
+	float rt,zt;
+	float t;
+	float D;
+	float it;
 	float azimuth;
 	float elevation;
-
 	float turnRate;
 	float motorOutput;
-
+	float cosAngle;
+	
+	// Variables needed for slope correction
 	float pitchAz;
 	float rollAz;
 	float a;
@@ -4956,143 +4984,204 @@ public void object::LandAim(object target)
 	float d;
 	float x;
 	float corr;
-
+	
 	float fireTime;
-
+	
 	object current;
-
-	if (target == null || target.dead)
+	
+	if (target != null && target.category != AlienEgg)
 	{
-		return;
-	}
-
-	oldBearing = orientation + direction(target.position);
-	oldRange = distance2d(position,target.position);
-	oldHeight = target.position.z - position.z;
-	oldTime = abstime();
-
-	leadTime = oldRange / projectileSpeed;
-
-	fireTime = abstime() + 0.2;
-
-	while (true)
-	{
-		current = radar(com.enemies,0,360,0,scanRange);
-
-		if (target == null || target.dead || current == null || current != target)
+		// Initialize the old variables
+		oldBearing = orientation + direction(target.position);
+		oldRange = distance2d(position, target.position);
+		oldHeight = target.position.z - position.z;
+		oldTime = abstime();
+		
+		it = oldRange / v0; // initial estimate for intercept time
+		fireTime = abstime() + 0.2; // don't fire for 0.5 seconds (first track target)
+		
+		while (true) 
 		{
-			break;
-		}
-
-		bearing = orientation + direction(target.position);
-		range = distance2d(position,target.position);
-		height = target.position.z - position.z;
-		time = abstime();
-
-		deltaBearing = bearing - oldBearing;
-
-		if (deltaBearing < -180)
-		{
-			deltaBearing += 360;
-		}
-		if (deltaBearing > 180)
-		{
-			deltaBearing -= 360;
-		}
-
-		deltaRange = range - oldRange;
-		deltaHeight = height - oldHeight;
-		deltaTime = time - oldTime;
-
-		if (deltaTime <= 0)
-		{
-			deltaTime = 0.001;
-		}
-
-		oldBearing = bearing;
-		oldRange = range;
-		oldHeight = height;
-		oldTime = time;
-
-		// Predict future target position
-		float t = leadTime / deltaTime;
-
-		futureBearing = bearing + t * deltaBearing;
-		futureRange = range + t * deltaRange;
-		futureHeight = height + t * deltaHeight;
-
-		azimuth = futureBearing - orientation;
-
-		if (azimuth < -180)
-		{
-			azimuth += 360;
-		}
-		if (azimuth > 180)
-		{
-			azimuth -= 360;
-		}
-
-		elevation = atan2(futureHeight,futureRange);
-
-		leadTime = futureRange / projectileSpeed;
-
-		// Same slope compensation used by PhazerAim
-		pitchAz = pitch*cos(azimuth) - roll*sin(azimuth);
-		rollAz = roll*cos(azimuth) + pitch*sin(azimuth);
-
-		b = elevation - pitchAz;
-
-		x = sin(b)*cos(rollAz);
-		if (x < -1) x = -1;
-		if (x > 1) x = 1;
-
-		a = asin(x);
-
-		x = cos(b)/cos(a);
-		if (x < -1) x = -1;
-		if (x > 1) x = 1;
-
-		c = acos(x);
-
-		if (b < 0)
-		{
-			c = -c;
-		}
-
-		x = sin(c)*sin(rollAz);
-		if (x < -1) x = -1;
-		if (x > 1) x = 1;
-
-		d = asin(x);
-
-		x = cos(c)/cos(d);
-		if (x < -1) x = -1;
-		if (x > 1) x = 1;
-
-		corr = -acos(x);
-
-		if (d < 0)
-		{
-			corr = -corr;
-		}
-
-		azimuth += corr;
-
-		// Aim gun
-		aim(a);
-
-		// Phazer-style predictive tracking
-		turnRate = (deltaBearing + azimuth/5) / deltaTime;
-		motorOutput = 0.5 * turnRate / maxTurnRate;
-
-		motor(-motorOutput,motorOutput);
-
-		// Fire only when solution is stable
-		if (abs(azimuth) < 2 && abs(a) < 45 && fireTime < abstime())
-		{
-			fire(0.05);
-			fireTime = abstime() + leadTime + 0.05;
+			current = radar(com.enemies,0,360,0,scanRange);
+			if (target == null || current == null || target != current)
+			{
+				break;
+			}
+			
+			// Collect data
+			bearing = orientation + direction(target.position);
+			range = distance2d(position, target.position);
+			height = target.position.z - position.z;
+			time = abstime();
+			
+			// Calculate differences
+			deltaBearing = bearing - oldBearing;
+			if (deltaBearing < -180)
+			{
+				deltaBearing += 360;
+			}
+			if (deltaBearing > 180)
+			{
+				deltaBearing -= 360;
+			}
+			deltaRange = range - oldRange;
+			deltaHeight = height - oldHeight;
+			deltaTime = time - oldTime;
+			if (deltaTime == 0.0)
+			{
+				deltaTime = 0.001;
+			}
+			
+			// Save data for next pass
+			oldBearing = bearing;
+			oldRange = range;
+			oldHeight = height;
+			oldTime = time;
+			
+			// Extrapolate target motion to interception point
+			t = it / deltaTime; // time factor
+			azimuth = bearing + t * deltaBearing - orientation; // intercept azimuth
+			if (azimuth < -180)
+			{
+				azimuth += 360; // azimuth correction (pole passage)
+			}
+			if (azimuth > 180)
+			{
+				azimuth -= 360;
+			}
+			zt = height + t * deltaHeight - cos(pitch) * cos(roll) * weaponHeight; // intercept height
+			rt = range + t * deltaRange - weaponOffset * cos(azimuth) * cos(pitch); // intercept range
+			if (rt < 0.001)
+			{
+				rt = 0.001;
+			}
+			
+			// Calculate weapon elevation
+			elevation = atan2(zt,rt);
+			
+			cosAngle = cos(elevation);
+			if (cosAngle == 0.0)
+			{
+				cosAngle = 0.001;
+			}
+			
+			it = sqrt(rt*rt + zt*zt) / v0; // intercept time (estimate for next pass)
+			if (it < 0.05)
+			{
+				it = 0.05;
+			}
+			
+			// Slope-correction
+			pitchAz = pitch * cos(azimuth) - roll * sin(azimuth); // pitch at target azimuth
+			rollAz = roll * cos(azimuth) + pitch * sin(azimuth); // roll at target azimuth
+			
+			// Solve slope-target spherical triangle
+			b = elevation - pitchAz; // relative elevation at target azimuth
+			x = sin(b) * cos(rollAz);
+			if (x < -1)
+			{
+				x = -1;
+			}
+			else if (x > 1)
+			{
+				x = 1;
+			}
+			a = asin(x); // new gun elevation
+			
+			cosAngle = cos(a);
+			if (cosAngle == 0.0)
+			{
+				cosAngle = 0.001;
+			}
+			
+			x = cos(b) / cosAngle;
+			if (x < -1)
+			{
+				x = -1;
+			}
+			else if (x > 1)
+			{
+				x = 1;
+			}
+			c = acos(x);
+			
+			if (b < 0) 
+			{
+				c = -c; // intermediate variable
+			}
+			
+			x = sin(c) * sin(rollAz);
+			if (x < -1)
+			{
+				x = -1;
+			}
+			else if (x > 1)
+			{
+				x = 1;
+			}
+			d = asin(x); // intermediate variable
+			
+			cosAngle = cos(d);
+			if (cosAngle == 0)
+			{
+				cosAngle = 0.001;
+			}
+			
+			x = cos(c) / cosAngle;
+			if (x < -1)
+			{
+				x = -1;
+			}
+			else if (x > 1)
+			{
+				x = 1;
+			}
+			corr = -acos(x);
+			
+			if (d < 0)
+			{
+				corr = -corr; // azimuth correction
+			}
+			
+			azimuth += corr; // apply azimuthal correction
+			
+			// Point the weapon in the right direction
+			if (a < minAngle)
+			{
+				aim(minAngle);
+			}
+			else if (a > maxAngle)
+			{
+				aim(maxAngle);
+			}
+			else
+			{
+				aim(a); // weapon elevation
+			}
+			
+			turnRate = (deltaBearing + azimuth / 5) / deltaTime; // rotate with target
+			motorOutput = 0.5 * turnRate / maxTurnRate; // calculate motor output
+			if (motorOutput > 1)
+			{
+				motorOutput = 1;
+			}
+			if (motorOutput < -1)
+			{
+				motorOutput = -1;
+			}
+			motor(-motorOutput, motorOutput); // apply turn rate
+			
+			dis = distance2d(this.position, target.position);
+			// Fire if target is within weapon envelope
+			if (dis <= 10 || (dis <= com.attackRange && a > minAngle - 2 && a < maxAngle + 2 && azimuth > -2 && azimuth < 2 && fireTime < abstime()))
+			{
+				if (target != null && !target.dead)
+				{
+					fire(0.2);
+					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
+					//Message("Firing at range " + dis + " m.");
+				}
+			}
 		}
 	}
 }
-
