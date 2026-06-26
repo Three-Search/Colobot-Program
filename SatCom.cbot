@@ -1265,14 +1265,14 @@ public void object::crawl(point p)
 			motor(-1,-1);
 			wait(1);
 			dir = 60-i;
-			motor(1 - dir/90,1 + dir/90);
+			motor(1 - dir/180,1 + dir/180);
 			wait(1);
 			return;
 		}
 	}
 	
 	dir = direction(p);
-	motor(1 - dir/90,1 + dir/90);
+	motor(1 - dir/180,1 + dir/180);
 }
 
 public void object::fly2p(point p)
@@ -1290,6 +1290,16 @@ public void object::fly2p(point p)
 	}
 }
 
+public void object::motorPower(float direction)
+{
+	float dir,speed,turn;
+	dir = direction;
+	if (abs(dir) < 5) dir = 0;
+	speed = 1 - abs(dir)/180;
+	turn = dir / 180;
+	motor(speed - turn, speed + turn);
+}
+
 public void object::fly(point p)
 {
 	SatCom com();
@@ -1299,6 +1309,7 @@ public void object::fly(point p)
 	float ang;
 	float dir;
 	float jetPower;
+	float speed,turn;
 	point sensor,left,right;
 	object root,o;
 	
@@ -1307,26 +1318,27 @@ public void object::fly(point p)
 		return;
 	}
 	
-	dis = distance(this.position,p);
+	dis = distance2d(this.position,p);
 	if (dis < 1)
 	{
 		dis = 1; // avoid division problems when close to target
 	}
-	dif = this.position.z-p.z;
 	if (radar(SpaceShip,0,90,0,20) != null && this.position.z >= com.spaceShip.position.z + 10)
 	{
 		jetPower = -0.05;
 	}
 	else
 	{
-		if (dis > com.attackRange)
+		dis = distance2d(this.position,p);
+		dif = this.position.z-p.z;
+		if (dis > com.attackRange + 10)
 		{
-			jetPower = (p.z + 8 - this.position.z) / 1000;
+			jetPower = (topo(this.position) + 10 - this.position.z) / 180;
 		}
 		else
 		{
-			ang = asin(dif / dis);
-			jetPower = (ang - 15) / 1000;
+			ang = atan2(dif,dis);
+			jetPower = (18 - ang) / 180;
 		}
 	}
 	
@@ -1349,22 +1361,30 @@ public void object::fly(point p)
 			if (distance2d(this.position,root.position) <= com.safeRoot && -60 < dir && dir < 60)
 			{
 				Message("Too near to GraviPlant. Pull back to avoid danger zone");
+				if (dir >= 0)
+				{
+					dir -= 180;
+				}
+				else
+				{
+					dir += 180;
+				}
 				turn(dir);
+				
 				while (distance2d(this.position,root.position) <= com.safeRoot)
 				{
-					motor(-1,-1);
+					motor(1,1);
 					if (this.temperature > com.temperatureThreshold)
 					{
 						gotoSafeLZ();
-						break;
+						return;
 					}
 				}
 				return;
 			}
 			else
 			{
-				dir = direction(p);
-				motor(1 - dir/90,1 + dir/90);
+				motorPower(direction(p));
 				return;
 			}
 		}
@@ -1374,7 +1394,7 @@ public void object::fly(point p)
 	if (o != null)
 	{
 		dir = 25;
-		motor(1 - dir/90,1 + dir/90);
+		motorPower(dir);
 		return;
 	}
 	
@@ -1382,7 +1402,7 @@ public void object::fly(point p)
 	if (o != null)
 	{
 		dir = 25;
-		motor(1 - dir/90,1 + dir/90);
+		motorPower(dir);
 		return;
 	}
 	
@@ -1392,7 +1412,7 @@ public void object::fly(point p)
 		if (topo(sensor) - 1 > this.position.z)
 		{
 			dir = 60-i;
-			motor(1 - dir/90,1 + dir/90);
+			motorPower(dir);
 			return;
 		}
 	}
@@ -1402,13 +1422,12 @@ public void object::fly(point p)
 		dir = 25;
 		motor(-1,-1);
 		wait(1);
-		motor(1 - dir/90,1 + dir/90);
+		motorPower(dir);
 		return;
 	}
 	
 	dir = direction(p);
-	motor(1 - dir/90,1 + dir/90);
-	//motor(1-dir/22.5,1+dir/22.5);
+	motorPower(dir);
 }
 
 public void object::fly(object o)
@@ -1425,7 +1444,13 @@ public void object::fly(object o)
 		return;
 	}
 	
-	turn(direction(o.position));
+	p = o.position;
+	turn(direction(p));
+	jet(1);
+	while (this.position.z < topo(this.position) + 3);
+	{
+		wait(0.01);
+	}
 	
 	i = 0;
 	last = this.position;
@@ -1478,13 +1503,15 @@ public bool object::isStuck(point last)
 {
 	SatCom com();
 	bool atStuckPoint = false;
+	object o;
 	
+	o = radar(Any,0,360,0,3);
 	//if ((abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05) || radar(Any,0,360,0,2) != null || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
 	//if ((abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05) || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
 	//if (distance2d(this.position,last) <= 0.05 || radar(Any,0,360,0,2) != null || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
 	//if (distance2d(this.position,last) <= 0.05)
 	//if (abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05)
-	if (abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05)
+	if (abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && o != null)
 	{
 		atStuckPoint = true;
 	}
@@ -3301,6 +3328,15 @@ public point object::leftPoint(point p1, point p2)
 	return p3;
 }
 
+public point object::leftPoint(float d)
+{
+	point ahead,left;
+	
+	ahead = aheadPoint(d);
+	left = leftPoint(ahead,this.position);
+	return left;
+}
+
 public point object::rightPoint(point p1)
 {
 	point p2,p3;
@@ -3322,6 +3358,15 @@ public point object::rightPoint(point p1, point p2)
 	return p3;
 }
 
+public point object::rightPoint(float d)
+{
+	point ahead,right;
+	
+	ahead = aheadPoint(d);
+	right = rightPoint(ahead,this.position);
+	return right;
+}
+
 // Function to find the left point P3 given P1 and P2
 public point object::leftPoint(point p1, point p2, float dis)
 {
@@ -3330,7 +3375,7 @@ public point object::leftPoint(point p1, point p2, float dis)
 	float dy = p2.y - p1.y;
 	
 	// Calculate the length of the vector P1P2
-	float length = distance(p1, p2);
+	float length = distance2d(p1, p2);
 	
 	// Calculate the normalized perpendicular vectors
 	float perp1x = (dy / length) * dis;
@@ -3462,8 +3507,10 @@ public void object::airAttack(object o,float radius)
 				{
 					if (distance2d(this.position,root.position) > com.safeAnt && distance2d(this.position,root.position) < distance2d(this.position,enemy.position))
 					{
-						left = leftPoint(this.position,root.position,com.safeAnt);
-						right = rightPoint(this.position,root.position,com.safeAnt);
+						left = leftPoint(10);
+						right = rightPoint(10);
+						left.z = this.position.z;
+						right.z = this.position.z;
 						if (distance2d(left,enemy.position) < distance2d(right,enemy.position))
 						{
 							p = left;
@@ -3577,50 +3624,42 @@ public void object::moveAndDestroy(object target)
 		return;
 	}
 	
-	dis = distance(this.position,target.position);
+	dis = distance2d(this.position,target.position);
 	
-	//if (dis <= com.attackRange && -15 <= dir && dir <= 15)   // if within range
 	if (dis <= com.attackRange)   // if within range
 	{
 		if (!checkLOS(target))
 		{
-			left = leftPoint(target.position);
-			right = rightPoint(target.position);
-			
-			//left.z = position.z + 1.5;
-			//right.z = position.z + 1.5;
+			left = leftPoint(10);
+			right = rightPoint(10);
+			left.z = this.position.z;
+			right.z = this.position.z;
 			
 			if (checkLOS(left,target.position) && topo(left) < left.z)
 			{
 				Message("No clear view, can not shoot. Fly to left side of target");
-				//fly2p(left);
-				fly(left);
-				wait(1);
+				fly2p(left);
+				wait(0.2);
 				return;
 			}
 			else if (checkLOS(right,target.position) && topo(right) < right.z)
 			{
 				Message("No clear view, can not shoot. Fly to right side of target");
-				//fly2p(right);
-				fly(right);
-				wait(1);
+				fly2p(right);
+				wait(0.2);
 				return;
 			}
 			else
 			{
-				Message("No clear view, can not shoot. Fly higher");
-				//gotoSafeLZ();
+				Message("No clear view, can not shoot. Fly back");
 				jet(1);
-				wait(1);
+				motor(-1,-1);
+				wait(0.2);
 				return;
 			}
 		}
 		motor(0,0);
 		aimAndFire(target);
-	}
-	else
-	{
-		aim(0,0);
 	}
 }
 
@@ -3664,45 +3703,15 @@ public void object::AirAim(object target)
 	
 	SatCom com();
 	
-	float dir, angle;
+	float scanRange = com.safeAnt; // scan for targets within this radius
+	float angle;
 	int i;
-	
-	// Prediction variables
-	float bearing;
-	float range;
-	float height;
-	float time;
-	
-	float oldBearing;
-	float oldRange;
-	float oldHeight;
-	float oldTime;
-	
-	float deltaBearing;
-	float deltaRange;
-	float deltaHeight;
-	float deltaTime;
-	
-	float azimuth;
-	float rt;
-	float zt;
-	float it;
-	float t;
-	
-	float v0 = 50; // muzzle velocity
+	object current;
 	
 	if (target == null || target.dead || distance2d(this.position,target.position) > com.attackRange)
 	{
 		return;
 	}
-	
-	// Initialize predictor
-	oldBearing = direction(target.position);
-	oldRange = distance2d(this.position,target.position);
-	oldHeight = target.position.z - this.position.z;
-	oldTime = abstime();
-	
-	it = oldRange / v0;
 	
 	// Stabilize altitude
 	i = 0;
@@ -3710,92 +3719,34 @@ public void object::AirAim(object target)
 	{
 		i++;
 		
-		angle = -atan2(this.position.z - target.position.z,distance(this.position,target.position)) - this.pitch;
-		
-		if (angle > com.maxAimAngle)
+		current = radar(com.enemies,0,360,0,scanRange);
+		if (target == null || current == null || target != current)
 		{
-			jet(0.35);
-		}
-		else if (angle < com.minAimAngle)
-		{
-			jet(-0.4);
+			jet(0);
+			return;
 		}
 		
-		wait(0.03);
+		angle = -atan2(this.position.z - target.position.z,distance2d(this.position,target.position)) - this.pitch;
+		
+		if (angle > 18)
+		{
+			jet(0.5);
+		}
+		else if (angle < -18)
+		{
+			jet(-0.5);
+		}
+		wait(0.02);
 	}
-	while ((angle < com.minAimAngle || angle > com.maxAimAngle) && i < 100);
+	while ((angle < -18 || angle > 18) && i < 100);
 	
 	jet(0);
 	
-	if (target == null || target.dead)
-	{
-		return;
-	}
-	
-	// Collect target data
-	bearing = direction(target.position);
-	range = distance2d(this.position,target.position);
-	height = target.position.z - this.position.z;
-	time = abstime();
-	
-	// Calculate target motion
-	deltaBearing = bearing - oldBearing;
-	if (deltaBearing < -180)
-	{
-		deltaBearing += 360;
-	}
-	if (deltaBearing > 180)
-	{
-		deltaBearing -= 360;
-	}
-	
-	deltaRange = range - oldRange;
-	deltaHeight = height - oldHeight;
-	
-	deltaTime = time - oldTime;
-	if (deltaTime == 0)
-	{
-		deltaTime = 0.001;
-	}
-	
-	// Predict intercept point
-	t = it / deltaTime;
-	
-	azimuth = bearing + t * deltaBearing;
-	
-	rt = range + t * deltaRange;
-	zt = height + t * deltaHeight;
-	if (rt < 0.001)
-	{
-		rt = 0.001;
-	}
-	
-	it = sqrt(rt*rt + zt*zt) / v0;
-	if (it < 0.05)
-	{
-		it = 0.05;
-	}
-	
-	// Aim at predicted intercept point
-	dir = azimuth;
-	angle = atan2(zt, rt) - this.pitch;
-	
-	if (dir > 40)
-	{
-		turn(dir - 40);
-	}
-	else if (dir < -40)
-	{
-		turn(dir + 40);
-	}
-	
-	dir = azimuth;
-	
 	if (target != null && !target.dead)
 	{
-		aim(angle, -dir);
+		aimat(target.position);
 		fire(0.05);
-		wait(0.2);
+		wait(0.1);
 	}
 }
 
@@ -3832,13 +3783,14 @@ public void object::landFire(object target)
 	}
 }
 
-public void object::aimat(point pos)
+public void object::aimat(point p)
 {
-	float dist=distance2d(pos,this.position);
-	float height=this.position.z-pos.z;
+	turn(direction(p));
+	float dist=distance2d(p,this.position);
+	float height=this.position.z-p.z;
 	float ipitch=atan2(height,dist);
 	ipitch+=this.pitch; //compensate
-	float iangle=direction(pos);
+	float iangle=direction(p);
 	//here we rotate ipitch and iangle by roll to compensate for that part of the scheme
 	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
 	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
@@ -3866,43 +3818,31 @@ public bool object::checkLOS(point bot_position, point ant_position)
 	
 	float total_distance = distance(bot_position, ant_position);
 	
+	if (total_distance < 10)
+	{
+		return true;
+	}
+	
 	// Calculate the direction vector from the bot to the ant
 	float dx = (ant_position.x - bot_position.x) / total_distance;
 	float dy = (ant_position.y - bot_position.y) / total_distance;
 	float dz = (ant_position.z - bot_position.z) / total_distance;
+	float clearance = (category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 0.5 : 0.2;
+	float end = total_distance - ((category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 4.0 : 2.0);
+	if (end < 2)
+	{
+		return true;
+	}
+	
 	point p;
-	int d;
 	
-	if (category == WingedOrgaShooter || category == LeggedOrgaShooter)
+	// Loop through every 0.5 meter from bot position to ant position
+	for (float t = 2.0; t < end; t += 0.5)
 	{
-		d = total_distance - 4;
-	}
-	else
-	{
-		d = total_distance - 2;
-	}
-	
-	// Loop through every meter from bot position to ant position
-	for (int i = 0; i < d; i++)
-	{
-		p.x = bot_position.x + i * dx;
-		p.y = bot_position.y + i * dy;
-		p.z = bot_position.z + i * dz;
-		
-		if (category == LeggedOrgaShooter)
-		{
-			if (topo(p) > p.z + 0.5)
-			{
-				return false;
-			}
-		}
-		else
-		{
-			if (topo(p) > p.z + 0.1)
-			{
-				return false;
-			}
-		}
+		p.x = bot_position.x + dx * t;
+		p.y = bot_position.y + dy * t;
+		p.z = bot_position.z + dz * t;
+		if (topo(p) > p.z + clearance) return false;
 	}
 	return true;
 }
@@ -4076,6 +4016,7 @@ public void object::landAndRest(point p)
 		}
 		else
 		{
+			// to rest on slope
 			behind = behindPoint(d);
 			left = leftPoint(this.position,behind);
 			right = rightPoint(this.position,behind);
@@ -4155,8 +4096,10 @@ public void object::airGuard(object center, float radius)
 				{
 					if (distance2d(this.position,root.position) > com.safeAnt && distance2d(this.position,root.position) < distance2d(this.position,enemy.position))
 					{
-						left = leftPoint(this.position,root.position,com.safeAnt);
-						right = rightPoint(this.position,root.position,com.safeAnt);
+						left = leftPoint(10);
+						right = rightPoint(10);
+						left.z = this.position.z;
+						right.z = this.position.z;
 						if (distance2d(left,enemy.position) < distance2d(right,enemy.position))
 						{
 							p = left;
@@ -4463,10 +4406,8 @@ public void object::landAttack()
 			{
 				if (!checkLOS(target.position))
 				{
-					left = leftPoint(target.position);
-					right = rightPoint(target.position);
-					//left.z = topo(left) + 1.5;
-					//right.z = topo(right) + 1.5;
+					left = leftPoint(10);
+					right = rightPoint(10);
 					left.z = topo(left);
 					right.z = topo(right);
 					
@@ -4616,10 +4557,8 @@ public void object::landGuard(object center,float radius)
 			{
 				if (!checkLOS(target.position))
 				{
-					left = leftPoint(target.position);
-					right = rightPoint(target.position);
-					//left.z = topo(left) + 1.5;
-					//right.z = topo(right) + 1.5;
+					left = leftPoint(10);
+					right = rightPoint(10);
 					left.z = topo(left);
 					right.z = topo(right);
 					
@@ -5009,7 +4948,7 @@ public void object::LandAim(object target)
 	
 	// Platform specific parameters
 	float minAngle = -20; // minimum gun elevation relative to platform
-	float maxAngle = 45; // maximum gun elevation relative to platform
+	float maxAngle = 20; // maximum gun elevation relative to platform
 	float weaponHeight = 1.5; // height of weapon above platform
 	float weaponOffset = 1.5; // weapon is this amount in front of platform
 	float maxTurnRate = 54; // maximum turn rate
@@ -5068,9 +5007,9 @@ public void object::LandAim(object target)
 		while (true) 
 		{
 			current = radar(com.enemies,0,360,0,scanRange);
-			if (target == null || current == null || target != current)
+			if (target == null || target.dead || current == null || target != current)
 			{
-				break;
+				return;
 			}
 			
 			// Collect data
