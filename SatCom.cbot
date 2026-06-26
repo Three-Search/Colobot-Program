@@ -1307,44 +1307,84 @@ public float object::jetPower(point p)
 	float dis;
 	float dif;
 	float ang;
-	float jetPower;
+	float jet;
+	float t;
+	float minH,maxH,minA,maxA;
 	
 	dis = distance2d(this.position, p);
 	dif = this.position.z - p.z;
 	ang = atan2(dif, dis);
+	t = topo(this.position);
+	
+	if (t < 0)
+	{
+		minH = 20;
+		maxH = 22;
+		minA = 18;
+		maxA = 20;
+	}
+	else
+	{
+		minH = 10;
+		maxH = 12;
+		minA = 18;
+		maxA = 20;
+	}
+	
 	if (dis > com.safeAnt)
 	{
 		// Cruise mode
-		if (this.altitude < 10)
+		if (this.altitude < minH)
 		{
-			jetPower = 0.2;
+			if (t < 0)
+			{
+				jet = 0.8;
+			}
+			else
+			{
+				jet = 0.2;
+			}
 		}
-		else if (this.altitude > 12)
+		else if (this.altitude > maxH)
 		{
-			jetPower = -0.2;
+			if (t < 0)
+			{
+				jet = 0;
+			}
+			else
+			{
+				jet = -0.2;
+			}
 		}
 		else
 		{
-			jetPower = 0;
+			jet = 0;
 		}
 	}
 	else
 	{
 		// Attack mode
-		if (ang < 18)
+		if (ang < minA)
 		{
-			jetPower = 0.2;
+			if (t < 0)
+			{
+				jet = 0.8;
+			}
+			else
+			{
+				jet = 0.2;
+			}
 		}
-		else if (ang > 20)
+		else if (ang > maxA)
 		{
-			jetPower = -0.2;
+			jet = -0.2;
 		}
 		else
 		{
-			jetPower = 0;
+			jet = 0;
 		}
 	}
-	return jetPower;
+	return jet;
 }
 
 public void object::fly(point p)
@@ -3631,21 +3671,21 @@ public void object::moveAndDestroy(object target)
 	}
 	
 	// check how near to Spider
-	if (distance2Spider(this.position) < com.safeRoot)
-	{
-		Message("Too near to Spider. Pull back and attack immediately");
-		while (distance2Spider(this.position) <= com.safeRoot)
-		{
-			motor(-1,-1);
-			if (this.temperature < com.temperatureThreshold)
-			{
-				jet(0.2);
-			}
-		}
-		motor(0,0);
-		aimAndFire(target);
-		return;
-	}
+	//if (distance2Spider(this.position) < com.safeRoot)
+	//{
+	//	Message("Too near to Spider. Pull back and attack immediately");
+	//	while (distance2Spider(this.position) <= com.safeRoot)
+	//	{
+	//		motor(-1,-1);
+	//		if (this.temperature < com.temperatureThreshold)
+	//		{
+	//			jet(0.2);
+	//		}
+	//	}
+	//	motor(0,0);
+	//	aimAndFire(target);
+	//	return;
+	//}
 	
 	dis = distance2d(this.position,target.position);
 	
