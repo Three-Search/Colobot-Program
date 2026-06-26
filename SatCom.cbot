@@ -1300,6 +1300,53 @@ public void object::motorPower(float direction)
 	motor(speed - turn, speed + turn);
 }
 
+public float object::jetPower(point p)
+{
+	SatCom com();
+	
+	float dis;
+	float dif;
+	float ang;
+	float jetPower;
+	
+	dis = distance2d(this.position, p);
+	dif = this.position.z - p.z;
+	ang = atan2(dif, dis);
+	if (dis > com.safeAnt)
+	{
+		// Cruise mode
+		if (this.altitude < 10)
+		{
+			jetPower = 0.2;
+		}
+		else if (this.altitude > 12)
+		{
+			jetPower = -0.2;
+		}
+		else
+		{
+			jetPower = 0;
+		}
+	}
+	else
+	{
+		// Attack mode
+		if (ang < 18)
+		{
+			jetPower = 0.2;
+		}
+		else if (ang > 20)
+		{
+			jetPower = -0.2;
+		}
+		else
+		{
+			jetPower = 0;
+		}
+	}
+	return jetPower;
+}
+
 public void object::fly(point p)
 {
 	SatCom com();
@@ -1308,7 +1355,7 @@ public void object::fly(point p)
 	float dif;
 	float ang;
 	float dir;
-	float jetPower;
+	float j;
 	float speed,turn;
 	point sensor,left,right;
 	object root,o;
@@ -1318,39 +1365,15 @@ public void object::fly(point p)
 		return;
 	}
 	
-	dis = distance2d(this.position,p);
-	if (dis < 1)
-	{
-		dis = 1; // avoid division problems when close to target
-	}
 	if (radar(SpaceShip,0,90,0,20) != null && this.position.z >= com.spaceShip.position.z + 10)
 	{
-		jetPower = -0.05;
+		j = -0.05;
 	}
 	else
 	{
-		dis = distance2d(this.position,p);
-		dif = this.position.z-p.z;
-		if (dis > com.attackRange + 10)
-		{
-			jetPower = (topo(this.position) + 10 - this.position.z) / 180;
-		}
-		else
-		{
-			ang = atan2(dif,dis);
-			jetPower = (18 - ang) / 180;
-		}
+		j = jetPower(p);
 	}
-	
-	if (jetPower > 1)
-	{
-		jetPower = 1;
-	}
-	if (jetPower < -1)
-	{
-		jetPower = -1;
-	}
-	jet(jetPower);
+	jet(j);
 	
 	if (com.detectedGraviPlant)
 	{
@@ -3639,15 +3662,11 @@ public void object::moveAndDestroy(object target)
 			{
 				Message("No clear view, can not shoot. Fly to left side of target");
 				fly2p(left);
-				wait(0.2);
-				return;
 			}
 			else if (checkLOS(right,target.position) && topo(right) < right.z)
 			{
 				Message("No clear view, can not shoot. Fly to right side of target");
 				fly2p(right);
-				wait(0.2);
-				return;
 			}
 			else
 			{
