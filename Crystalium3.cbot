@@ -15,10 +15,12 @@ extern void object::Crystalium3()
 		
 		if (distance2d(position,item.position) > 80)
 		{
-			fly(item.position);
+			jet(0.1);
+			motorPower(direction(item.position));
 		}
 		else
 		{
+			jet(0.1);
 			motor(0,0);
 		}
 	}
