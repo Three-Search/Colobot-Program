@@ -4,23 +4,20 @@ extern void object::Centuary2()
 	
 	errmode(0);
 	
-	object target;
-	while (true)
+	object target,o;
+	object[] items = radarall(GoalArea);
+	
+	for (int i = 0; i < sizeof(items); ++i)
 	{
-		target = radar(TargetBot);
-		
-		if (target != null)
+		o = items[i];
+		go(o);
+		target = radar(TargetBot,0,360,0,com.attackRange);
+		while (target != null)
 		{
-			crawl(target.position);
-			if (target != null && distance2d(position,target.position) <= com.attackRange)
-			{
-				aimAndFire(target);
-			}
-		}
-		else
-		{
-			aim(0,0);
-			break;
+			aimat(target.position);
+			fire(0.05);
+			wait(0.5);
+			target = radar(TargetBot,0,360,0,com.attackRange);
 		}
 	}
 	go(SpaceShip);
