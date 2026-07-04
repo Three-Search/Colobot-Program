@@ -1,5 +1,5 @@
 /*
-27 June 2026
+3 July 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
@@ -158,7 +158,7 @@ public class Queue
 		// Clean up null at the front of the queue before peeking
 		if (front != rear && items[front] == null)
 		{
-			    front = (front + 1) % length;
+				front = (front + 1) % length;
 		}
 		if (isEmpty())
 		{
@@ -515,7 +515,7 @@ public class SatCom
 		RADII[38] = 01.50; //TNT Brick
 		
 		RADII[50] = 00.00; //green cross   -> energy deposit.
-		RADII[51] = 00.00; //red cross     -> titanium ore.
+		RADII[51] = 00.00; //red cross	 -> titanium ore.
 		RADII[52] = 00.00; //yellow circle -> uranium ore.
 		
 		RADII[60] = 02.00; //Mine
@@ -980,26 +980,26 @@ public point object::mid(point p1, point p2)
 
 public point object::mid(point p1, point p2, float d)
 {
-	    // Calculate the direction vector from p1 to p2
-	    float dirX = p2.x - p1.x;
-	    float dirY = p2.y - p1.y;
-	    float dirZ = p2.z - p1.z;
-	    
-	    // Calculate the length of the direction vector
-	    float length = sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
-	    
-	    // Normalize the direction vector
-	    float unitX = dirX / length;
-	    float unitY = dirY / length;
-	    float unitZ = dirZ / length;
-	    
-	    // Calculate the new point at the specified distance from p2
-	    point m;
-	    m.x = p2.x - unitX * d;
-	    m.y = p2.y - unitY * d;
-	    m.z = p2.z - unitZ * d;
-	    
-	    return m;
+		// Calculate the direction vector from p1 to p2
+		float dirX = p2.x - p1.x;
+		float dirY = p2.y - p1.y;
+		float dirZ = p2.z - p1.z;
+		
+		// Calculate the length of the direction vector
+		float length = sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
+		
+		// Normalize the direction vector
+		float unitX = dirX / length;
+		float unitY = dirY / length;
+		float unitZ = dirZ / length;
+		
+		// Calculate the new point at the specified distance from p2
+		point m;
+		m.x = p2.x - unitX * d;
+		m.y = p2.y - unitY * d;
+		m.z = p2.z - unitZ * d;
+		
+		return m;
 }
 
 public point object::awayShipPoint(point p)
@@ -1263,31 +1263,16 @@ public void object::crawl(point p)
 		if (topo(sensor) < 0)
 		{
 			motor(-1,-1);
-			wait(1);
+			wait(0.2);
 			dir = 60-i;
 			motor(1 - dir/180,1 + dir/180);
-			wait(1);
+			wait(0.2);
 			return;
 		}
 	}
 	
 	dir = direction(p);
 	motor(1 - dir/180,1 + dir/180);
-}
-
-public void object::fly2p(point p)
-{
-	SatCom com();
-	
-	turn(direction(p));
-	while (distance2d(this.position,p) > 5)
-	{
-		fly(p);
-		if (this.altitude < 2)
-		{
-			break;
-		}
-	}
 }
 
 public void object::motorPower(float direction)
@@ -1300,94 +1285,28 @@ public void object::motorPower(float direction)
 	motor(speed - turn, speed + turn);
 }
 
-public float object::jetPower(point p)
+public void object::fly(point p)
 {
-	SatCom com();
+	float dir; // direction of point p from bot
+	float dis; // distance of point p from bot
+	float dis2d;
+	float dif; // difference in altitude of point p & bot (relative to sea-level)
+	float ang; // flying angle must be -20 degrees favorable
 	
-	float dis;
-	float dif;
-	float ang;
-	float jet;
-	float t;
-	float minH,maxH,minA,maxA;
-	
-	dis = distance2d(this.position, p);
-	dif = this.position.z - p.z;
-	ang = atan2(dif, dis);
-	t = topo(this.position);
-	
-	if (t < 0)
+	if (p.z <= 0)
 	{
-		minH = 20;
-		maxH = 22;
-		minA = 18;
-		maxA = 20;
-	}
-	else
-	{
-		minH = 10;
-		maxH = 12;
-		minA = 18;
-		maxA = 20;
+		return;
 	}
 	
-	if (dis > com.safeAnt)
-	{
-		// Cruise mode
-		if (this.altitude < minH)
-		{
-			if (t < 0)
-			{
-				jet = 0.8;
-			}
-			else
-			{
-				jet = 0.2;
-			}
-		}
-		else if (this.altitude > maxH)
-		{
-			if (t < 0)
-			{
-				jet = 0;
-			}
-			else
-			{
-				jet = -0.2;
-			}
-		}
-		else
-		{
-			jet = 0;
-		}
-	}
-	else
-	{
-		// Attack mode
-		if (ang < minA)
-		{
-			if (t < 0)
-			{
-				jet = 0.8;
-			}
-			else
-			{
-				jet = 0.2;
-			}
-		}
-		else if (ang > maxA)
-		{
-			jet = -0.2;
-		}
-		else
-		{
-			jet = 0;
-		}
-	}
-	return jet;
+	dis = distance(this.position,p);
+	dif = p.z-this.position.z;
+	ang = asin(dif/dis);
+	jet(1-(ang/-20)); // thrust until 20 degress above target
+	dir = direction(p); 
+	motor(1-dir/22.5,1+dir/22.5);// move towards the point p
 }
 
-public void object::fly(point p)
+public void object::fly_old(point p)
 {
 	SatCom com();
 	
@@ -1397,23 +1316,13 @@ public void object::fly(point p)
 	float dir;
 	float j;
 	float speed,turn;
-	point sensor,left,right;
+	point hit,left,right;
 	object root,o;
 	
-	if (p.z <= 0 && this.altitude < 2)
+	if (p.z <= 0)
 	{
 		return;
 	}
-	
-	if (radar(SpaceShip,0,90,0,20) != null && this.position.z >= com.spaceShip.position.z + 10)
-	{
-		j = -0.05;
-	}
-	else
-	{
-		j = jetPower(p);
-	}
-	jet(j);
 	
 	if (com.detectedGraviPlant)
 	{
@@ -1469,16 +1378,16 @@ public void object::fly(point p)
 		return;
 	}
 	
-	for (int i = 30; i > 0; i--)
-	{
-		sensor = aheadPoint(i,i-60);
-		if (topo(sensor) - 1 > this.position.z)
-		{
-			dir = 60-i;
-			motorPower(dir);
-			return;
-		}
-	}
+	//for (int i = 30; i > 0; i--)
+	//{
+	//	hit = aheadPoint(i,i-60);
+	//	if (topo(hit) - 1 > this.position.z)
+	//	{
+	//		dir = 60-i;
+	//		motorPower(dir);
+	//		return;
+	//	}
+	//}
 	
 	if (distance2d(this.position,com.spaceShip.position) < 2.5)
 	{
@@ -1491,6 +1400,38 @@ public void object::fly(point p)
 	
 	dir = direction(p);
 	motorPower(dir);
+}
+
+public void object::fly2p(point p)
+{
+	SatCom com();
+	
+	float dir; // direction of point p from bot
+	float dis; // distance of point p from bot
+	float dis2d;
+	float dif; // difference in altitude of point p & bot (relative to sea-level)
+	float ang; // flying angle must be -20 degrees favorable
+	
+	turn(direction(p));
+	dis2d = distance2d(this.position,p);
+	while (dis2d > 5.5)
+	{
+		fly(p);
+		dis2d = distance2d(this.position,p);
+		if (dis2d <= 5.5)
+		{
+			motor(0,0);
+			while (this.altitude > 0)
+			{
+				jet(-1);
+				if (this.temperature == 0) // if stuck on tree, temperature will reduce to 0
+				{
+					break;
+				}
+			}
+			break;
+		}
+	}
 }
 
 public void object::fly(object o)
@@ -3222,86 +3163,6 @@ public point object::freePoint(point c, float radius, int numPoints)
 	}
 }
 
-public bool object::isValley(object o, object e)
-{
-	SatCom com();
-	
-	int numPoints = 36;
-	float angleIncrement = 360 / numPoints;
-	float angle,radius,targetTopo,minTopo,maxTopo,topoVal,eDist,minDist;
-	point target,p,minPoint,maxPoint,bestPoint;
-	
-	target = o.position;
-	targetTopo = topo(target);
-	radius = com.safeAnt;
-	
-	minTopo = 999999;
-	minPoint.x = 999999;
-	minPoint.y = 999999;
-	minPoint.z = 999999;
-	
-	maxTopo = -999999;
-	maxPoint.x = -999999;
-	maxPoint.y = -999999;
-	maxPoint.z = -999999;
-	
-	minDist = 999999;
-	bestPoint.x = 999999;
-	bestPoint.y = 999999;
-	bestPoint.z = 999999;
-	
-	for (int i = 0; i < numPoints; i++)
-	{
-		angle = angleIncrement * i;
-		p.x = target.x + radius * cos(angle);
-		p.y = target.y + radius * sin(angle);
-		topoVal = topo(p);
-		p.z = topoVal;
-		
-		if (topoVal < minTopo)
-		{
-			minPoint.x = p.x;
-			minPoint.y = p.y;
-			minPoint.z = p.z;
-			minTopo = topoVal;
-		}
-		
-		if (topoVal > maxTopo)
-		{
-			maxPoint.x = p.x;
-			maxPoint.y = p.y;
-			maxPoint.z = p.z;
-			maxTopo = topoVal;
-		}
-		
-		if (topoVal <= targetTopo)
-		{
-			eDist = distance2d(p,e.position);
-			if (eDist < minDist)
-			{
-				bestPoint.x = p.x;
-				bestPoint.y = p.y;
-				bestPoint.z = this.position.z;
-				minDist = eDist;
-			}
-			plantFlag(p,YellowFlag);
-		}
-		else
-		{
-			plantFlag(p,RedFlag);
-		}
-	}
-	
-	plantFlag(minPoint,GreenFlag);
-	plantFlag(maxPoint,BlueFlag);
-	com.returnPoint = bestPoint;
-	if (maxPoint.z > target.z + 10)
-	{
-		return true;
-	}
-	return false;
-}
-
 public point object::gunPoint(float d)
 {
 	point p;
@@ -3498,6 +3359,39 @@ public point object::rightPoint(point p1, point p2, float dis)
 	}
 }
 
+public point object::sensor(float d, point target)
+{
+	SatCom com();
+	
+	int i;
+	int n = 5;
+	point hit,p;
+	point sensorPoints[n];
+	
+	// if hit.z = 0 no sensor point hit mountain
+	hit.x = 0;
+	hit.y = 0;
+	hit.z = 0;
+	
+	sensorPoints[0] = aheadPoint(d);
+	sensorPoints[1] = aheadPoint(d,45);
+	sensorPoints[2] = aheadPoint(d,-45);
+	sensorPoints[3] = aheadPoint(d,90);
+	sensorPoints[4] = aheadPoint(d,-90);
+	
+	for (i = 0; i < n; i++)
+	{
+		p = sensorPoints[i];
+		p.z = topo(p);
+		if (p.z >= this.position.z + 1)
+		{
+			hit = p;
+			break;
+		}
+	}
+	return hit;
+}
+
 public void object::moveAndDestroy(object target)
 {
 	errmode(0);
@@ -3505,11 +3399,13 @@ public void object::moveAndDestroy(object target)
 	SatCom com();
 	
 	object enemies[],o;
-	float dir;    // direction of target from shooter
-	float dis;    // distance of target from shooter
-	float dif;    // difference in altitude of target & shooter (relative to sea-level)
-	float ang;    // angle shooter must aim (-20 degrees favorable)
-	point p,left,right,sensor;
+	float dir;	// direction of target from shooter
+	float dis;	// distance of target from shooter
+	float dif;	// difference in altitude of target & shooter (relative to sea-level)
+	float ang;	// angle shooter must aim (-20 degrees favorable)
+	int i;
+	point p,hit,left,right,behind;
+	bool los = false;
 	
 	fly(target.position);
 	
@@ -3536,51 +3432,56 @@ public void object::moveAndDestroy(object target)
 			}
 		}
 	}
-	
-	// check how near to Spider
-	//if (distance2Spider(this.position) < com.safeRoot)
-	//{
-	//	Message("Too near to Spider. Pull back and attack immediately");
-	//	while (distance2Spider(this.position) <= com.safeRoot)
-	//	{
-	//		motor(-1,-1);
-	//		if (this.temperature < com.temperatureThreshold)
-	//		{
-	//			jet(0.2);
-	//		}
-	//	}
-	//	motor(0,0);
-	//	aimAndFire(target);
-	//	return;
-	//}
-	
+		
 	dis = distance2d(this.position,target.position);
-	
-	if (dis <= com.attackRange)   // if within range
+	if (dis > com.attackRange)
+	{
+		// do not check hit mountain and trigger escapeMountain finding if the bot is flying on water
+		if (category == WingedShooter || category == WingedOrgaShooter)
+		{
+			behind = behindPoint(5);
+			if (topo(behind) > 0)
+			{
+				hit = sensor(1.5,target.position);
+				if (hit.z > 0)
+				{
+					motor(-0.3,-0.3);
+					escapeMountain(hit,target.position);
+				}
+			}
+		}
+	}
+	else // if within range
 	{
 		if (!checkLOS(target))
 		{
-			left = leftPoint(10);
-			right = rightPoint(10);
-			left.z = this.position.z;
-			right.z = this.position.z;
-			
-			if (checkLOS(left,target.position) && topo(left) < left.z)
+			for (i = 1; i < 10; i++)
 			{
-				Message("No clear view, can not shoot. Fly to left side of target");
-				fly2p(left);
+				left = leftPoint(5*i);
+				if (checkLOS(left,target.position) && topo(left) < left.z)
+				{
+					p = left;
+					los = true;
+					break;
+				}
+				right = rightPoint(5*i);
+				if (checkLOS(right,target.position) && topo(right) < right.z)
+				{
+					p = right;
+					los = true;
+					break;
+				}
 			}
-			else if (checkLOS(right,target.position) && topo(right) < right.z)
+			if (los)
 			{
-				Message("No clear view, can not shoot. Fly to right side of target");
-				fly2p(right);
+				fly2p(p);
 			}
 			else
 			{
-				Message("No clear view, can not shoot. Fly back");
+				Message("No LOS, draw back");
 				jet(1);
-				motor(-1,-1);
-				wait(0.2);
+				move(-10);
+				turn(45);
 				return;
 			}
 		}
@@ -3722,74 +3623,177 @@ public void object::gotoSafeLZ(object o)
 {
 	SatCom com();
 	
-	object bot;
-	point botPos;
-	int numPoints = 36;
-	float angleIncrement = 360 / numPoints;
-	float angle;
+	int gridSize = 41;
+	int totalNodes = gridSize * gridSize;
+	float nodeSpacing = 5;
+	int centerX = 20;
+	int centerY = 20;
+	point botPos, ahead, bestPoint;
+	bool foundPoint;
 	
-	bot = this;
-	botPos = aheadPoint(15);
+	// Check ahead point first (fast path)
+	ahead = aheadPoint(10);
+	if (distance2d(ahead, o.position) < distance2d(this.position, o.position))
+	{
+		botPos = ahead;
+	}
+	else
+	{
+		botPos = this.position;
+	}
 	
 	float topoVal = topo(botPos);
-	float groundVal = flatground(botPos,3);
-	
-	if (topoVal >= com.safeTopo && groundVal >= com.safeFlatGround && distance2Enemies(botPos) >= com.safeAnt)
+	botPos.z = topoVal;
+	float groundVal = flatground(botPos,2);
+	if (topoVal >= com.safeTopo && groundVal >= com.safeFlatGround)
 	{
-		plantFlag(botPos,GreenFlag);
 		landAndRest(botPos);
 		return;
 	}
 	
-	float radius = 5;
-	while (true)
+	// Build grid centered at current position
+	botPos = this.position;  // search from current position
+	point grid[totalNodes];
+	bool gridOpen[totalNodes];
+	int neighborOffsets[totalNodes][4]; // 4 neighbors (up, down, left, right)
+	int neighborCount[totalNodes];
+	
+	// Direction offsets for 4 neighbors (up, down, left, right)
+	int dirX_4[] = {0, 0, -1, 1};   // up: 0, down: 0, left: -1, right: 1
+	int dirY_4[] = {-1, 1, 0, 0};   // up: -1, down: 1, left: 0, right: 0
+	
+	for (int y = 0; y < gridSize; y++)
 	{
-		point bestPoint(0, 0, 0);
-		float minDistToObject = 999999;
-		for (int i = 0; i < numPoints; i++)
+		for (int x = 0; x < gridSize; x++)
 		{
-			angle = angleIncrement * i;
-			point p;
-			p.x = botPos.x + radius * cos(angle);
-			p.y = botPos.y + radius * sin(angle);
-			float topoVal = topo(p);
-			p.z = topoVal;
-			if (topoVal >= com.safeTopo)
+			int index = y * gridSize + x;
+			
+			// === BUILD GRID ===
+			grid[index].x = botPos.x + (x - centerX) * nodeSpacing;
+			grid[index].y = botPos.y + (y - centerY) * nodeSpacing;
+			grid[index].z = topo(grid[index]);
+			
+			// === PRE-COMPUTE 4 NEIGHBORS ===
+			int count = 0;
+			for (int d = 0; d < 4; d++)
 			{
-				float groundVal = flatground(p,3);
-				if (groundVal >= com.safeFlatGround)
+				int nx = x + dirX_4[d];
+				int ny = y + dirY_4[d];
+				if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize)
 				{
-					if (distance2Enemies(p) >= com.safeAnt)
-					{
-						float distToObject = distance2d(p,o.position);
-						if (distToObject < minDistToObject)
-						{
-							bestPoint.x = p.x;
-							bestPoint.y = p.y;
-							bestPoint.z = p.z;
-							minDistToObject = distToObject;
-						}
-						plantFlag(p,YellowFlag);
-					}
-					else
-					{
-						plantFlag(p,RedFlag);
-					}
+					neighborOffsets[index][count] = ny * gridSize + nx;
+					count++;
 				}
-				else
+			}
+			neighborCount[index] = count;
+		}
+	}
+	
+	// === CLASSIFY NODES ===
+	for (int idx = 0; idx < totalNodes; idx++)
+	{
+		gridOpen[idx] = false;
+		
+		if (grid[idx].z <= 0) // water node
+		{
+			continue;
+		}
+		
+		int count = neighborCount[idx];
+		if (count < 4) // edge node
+		{
+			continue;
+		}
+		
+		// check 4 neighbors (up, down, left, right), for each neighbor node, compare its topo with the current node topo, if the different > 0.4 m then the current node is not flat ground node
+		bool isFlatGround = true;
+		for (int d = 0; d < count; d++)
+		{
+			int neighborIdx = neighborOffsets[idx][d];
+			point m = mid(grid[neighborIdx],grid[idx]);
+			if (abs(m.z - grid[idx].z) > 0.4)
+			{
+				isFlatGround = false;
+				break;
+			}
+		}
+		if (!isFlatGround) // not flat ground node
+		{
+			continue;
+		}
+		
+		gridOpen[idx] = true;
+		plantFlag(grid[idx],50);
+	}
+	
+	// Check expanding squares
+	for (int radius = 4; radius <= centerX; radius++) // start from 4 th radius.  around 4  x nodeSpacing = 16 m from center
+	{
+		bestPoint.x = 0;
+		bestPoint.y = 0;
+		bestPoint.z = 0;
+		float minDistToObject = 999999.0;
+		foundPoint = false;
+		
+		int nodesOnSquare = radius * 8;
+		
+		for (int i = 0; i < nodesOnSquare; i++)
+		{
+			int dx, dy;
+			
+			if (i < radius * 2)
+			{
+				dx = -radius + i;
+				dy = -radius;
+			}
+			else if (i < radius * 4)
+			{
+				dx = radius;
+				dy = -radius + (i - radius * 2);
+			}
+			else if (i < radius * 6)
+			{
+				dx = radius - (i - radius * 4) - 1;
+				dy = radius;
+			}
+			else
+			{
+				dx = -radius;
+				dy = radius - (i - radius * 6) - 1;
+			}
+			
+			int gridX = centerX + dx;
+			int gridY = centerY + dy;
+			
+			if (gridX < 0 || gridX >= gridSize || gridY < 0 || gridY >= gridSize) continue;
+			
+			int index = gridY * gridSize + gridX;
+			
+			if (gridOpen[index])
+			{
+				//float distToObject = distance2d(grid[index], o.position);
+				//if (distToObject < minDistToObject)
+				//{
+				//	bestPoint = grid[index];
+				//	minDistToObject = distToObject;
+				//	foundPoint = true;
+				//}
+				if (checkLOS(grid[index])) // node is not blocked by mountain
 				{
-					plantFlag(p,RedFlag);
+					bestPoint = grid[index];
+					foundPoint = true;
+					break;
 				}
 			}
 		}
 		
-		if (minDistToObject < 999999)
+		if (foundPoint)
 		{
 			landAndRest(bestPoint);
 			return;
 		}
-		radius += 5;
 	}
+	Message("Could not found safe LZ");
 }
 
 public void object::gotoSafeLZ()
@@ -3836,36 +3840,39 @@ public void object::landAndRest(point p)
 	point ahead,behind,left,right;
 	float d = 1.5;
 	
-	plantFlag(p,GreenFlag);
+	plantFlag(p,52); // Yellow Circle
 	
-	fly2p(p);
-	
+	if (distance2d(this.position,p) > 5.5)
+	{
+		fly2p(p);
+	}
+	else
+	{
+		goto(p);
+	}
 	while (this.temperature > 0)
 	{
-		jet(-0.8);
-		if (this.altitude > 0)
+		jet(-1);
+		// check if rest on slope
+		if (flatground(this.position,0.1) < 0.1)
 		{
-			if (distance2d(this.position,p) > 5)
+			ahead = aheadPoint(d*4);
+			if (topo(ahead) < this.position.z)
 			{
-				motor(1,1);
+				motor(-0.05,-0.05);
 			}
 			else
 			{
-				motor(0,0);
+				behind = behindPoint(d);
+				left = leftPoint(this.position,behind);
+				right = rightPoint(this.position,behind);
+				motor(speed(left),speed(right));
 			}
 		}
-		else
-		{
-			// to rest on slope
-			behind = behindPoint(d);
-			left = leftPoint(this.position,behind);
-			right = rightPoint(this.position,behind);
-			motor(speed(left),speed(right));
-		}
-		enemy = radar(com.ants,0,360,0,20);
+		enemy = radar(com.ants,0,360,0,com.attackRange);
 		if (enemy != null)
 		{
-			motor(0,0);
+			turn(direction(enemy.position));
 			aimAndFire(enemy);
 		}
 	}
@@ -5211,5 +5218,496 @@ public void object::AirAim(object target)
 		aimat(target.position);
 		fire(0.05);
 		wait(0.1);
+	}
+}
+
+public point[] object::findMountainEscape(point hitPoint, point target)
+{
+	SatCom com();
+	
+	int gridSize = 25;
+	int totalNodes = gridSize * gridSize;
+	float nodeSpacing = 10;
+	float diagonal = nodeSpacing * sqrt(2.0);
+	float orthogonal = nodeSpacing;
+	int centerX = 12;
+	int centerY = 12;
+	int centerIndex = centerY * gridSize + centerX;
+	
+	int dirX[] = {-1, 0, 1, -1, 1, -1, 0, 1};
+	int dirY[] = {-1, -1, -1, 0, 0, 1, 1, 1};
+	
+	// Pre-calculated move costs (diagonal = nodeSpacing * sqrt(2), orthogonal = nodeSpacing)
+	float moveCosts[] = {diagonal, orthogonal, diagonal, orthogonal, orthogonal, diagonal, orthogonal, diagonal};
+	
+	// Pre-compute neighbor offsets
+	int neighborOffsets[totalNodes][8];
+	int neighborCount[totalNodes];
+	
+	for (int y = 0; y < gridSize; y++)
+	{
+		for (int x = 0; x < gridSize; x++)
+		{
+			int idx = y * gridSize + x;
+			int count = 0;
+			for (int d = 0; d < 8; d++)
+			{
+				int nx = x + dirX[d];
+				int ny = y + dirY[d];
+				if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize)
+				{
+					neighborOffsets[idx][count] = ny * gridSize + nx;
+					count++;
+				}
+			}
+			neighborCount[idx] = count;
+		}
+	}
+	
+	// Arrays
+	point grid[totalNodes];
+	bool gridOpen[totalNodes];
+	bool gridVisited[totalNodes];
+	int gridParent[totalNodes];
+	float gCost[totalNodes];
+	float fCost[totalNodes];
+	float terrainHeights[totalNodes];
+	
+	float hitTopo = topo(hitPoint);
+	
+	// === FAST PATH: Check direct flight ===
+	float hitHeight = hitPoint.z;
+	float targetHeight = target.z;
+	float hitGround = topo(hitPoint);
+	float targetGround = topo(target);
+	
+	if (hitHeight > hitGround + 15.0 && targetHeight > targetGround + 15.0)
+	{
+		point directPath[2];
+		directPath[0] = hitPoint;
+		directPath[1] = target;
+		return directPath;
+	}
+	
+	// === IDENTIFY GROUND LEVEL ===
+	int terrainCount = 0;
+	float groundLevel = 0.0;
+	
+	// Build grid and collect terrain heights in one pass
+	for (int y = 0; y < gridSize; y++) {
+		for (int x = 0; x < gridSize; x++) {
+			int index = y * gridSize + x;
+			
+			grid[index].x = hitPoint.x + (x - centerX) * nodeSpacing;
+			grid[index].y = hitPoint.y + (y - centerY) * nodeSpacing;
+			grid[index].z = topo(grid[index]);
+			
+			// Collect flat terrain heights
+			if (0 < grid[index].z && grid[index].z < hitTopo)
+			{
+				if (flatground(grid[index],0.2) > 0)
+				{
+					terrainHeights[terrainCount] = grid[index].z;
+					terrainCount++;
+				}
+			}
+		}
+	}
+	
+	// Find median using quickselect (O(n) instead of O(n log n))
+	if (terrainCount > 0)
+	{
+		int targetIdx = terrainCount / 2;
+		int left = 0;
+		int right = terrainCount - 1;
+		
+		while (left < right)
+		{
+			float pivot = terrainHeights[right];
+			int partition = left;
+			
+			for (int i = left; i < right; i++)
+			{
+				if (terrainHeights[i] <= pivot)
+				{
+					float temp = terrainHeights[i];
+					terrainHeights[i] = terrainHeights[partition];
+					terrainHeights[partition] = temp;
+					partition++;
+				}
+			}
+			
+			float temp = terrainHeights[right];
+			terrainHeights[right] = terrainHeights[partition];
+			terrainHeights[partition] = temp;
+			
+			if (partition == targetIdx) break;
+			if (partition < targetIdx)
+			{
+				left = partition + 1;
+			}
+			else
+			{
+				right = partition - 1;
+			}
+		}
+		groundLevel = terrainHeights[targetIdx];
+	}
+	else
+	{
+		groundLevel = topo(com.spaceShip.position) - 7;
+	}
+	
+	float safeFlyingHeight = groundLevel + 10.0;
+	float minFlyingHeight = groundLevel + 5.0;
+	
+	// === CLASSIFY NODES ===
+	for (int idx = 0; idx < totalNodes; idx++)
+	{
+		bool isGround = (0 < grid[idx].z && grid[idx].z <= minFlyingHeight);
+		bool isWater = (grid[idx].z <= 0);
+		gridOpen[idx] = (isGround || isWater);
+		gridVisited[idx] = false;
+		gridParent[idx] = -1;
+	}
+	
+	// Hit point is always blocked
+	grid[centerIndex].x = hitPoint.x;
+	grid[centerIndex].y = hitPoint.y;
+	grid[centerIndex].z = hitTopo;
+	gridOpen[centerIndex] = false;
+	
+	// === FIND START NODE ===
+	int startIndex = -1;
+	float minDistToHit = 999999.0;
+	point b;
+	b = this.position;
+	
+	// Check 8 neighbors first
+	for (int d = 0; d < 8; d++)
+	{
+		int nx = centerX + dirX[d];
+		int ny = centerY + dirY[d];
+		if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize)
+		{
+			int neighborIndex = ny * gridSize + nx;
+			// find open node, water node or flat node (not on mountain slope node), nearest to bot
+			if (gridOpen[neighborIndex] && (grid[neighborIndex].z < 0 || flatground(grid[neighborIndex], 0.2) > 0))
+			{
+				float dx = grid[neighborIndex].x - b.x;
+				float dy = grid[neighborIndex].y - b.y;
+				float dist = dx*dx + dy*dy;
+				if (dist < minDistToHit)
+				{
+					minDistToHit = dist;
+					startIndex = neighborIndex;
+				}
+			}
+		}
+	}
+	
+	// If not found, expand search to 2-cell radius
+	if (startIndex == -1)
+	{
+		for (int dy = -2; dy <= 2; dy++)
+		{
+			for (int dx = -2; dx <= 2; dx++)
+			{
+				if (abs(dx) <= 1 && abs(dy) <= 1) continue;
+				
+				int nx = centerX + dx;
+				int ny = centerY + dy;
+				if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize)
+				{
+					int neighborIndex = ny * gridSize + nx;
+					
+					if (gridOpen[neighborIndex] && (grid[neighborIndex].z < 0 || flatground(grid[neighborIndex], 0.2) > 0))
+					{
+						float dxx = grid[neighborIndex].x - b.x;
+						float dyy = grid[neighborIndex].y - b.y;
+						float dist = dxx*dxx + dyy*dyy;
+						
+						if (dist < minDistToHit)
+						{
+							minDistToHit = dist;
+							startIndex = neighborIndex;
+						}
+					}
+				}
+			}
+		}
+	}
+	
+	// if could not find start node
+	if (startIndex == -1)
+	{
+		point emptyPath[0];
+		return emptyPath;
+	}
+	
+	// === FIND TARGET NODE ===
+	int targetIndex = -1;
+	float minDistToTarget = 999999.0;
+	bool foundUnderwater = false;
+	
+	// First pass: try to find underwater node
+	for (int i = 0; i < totalNodes; i++)
+	{
+		if (grid[i].z < 0)
+		{
+			float dx = grid[i].x - target.x;
+			float dy = grid[i].y - target.y;
+			float dist = dx*dx + dy*dy;
+			
+			if (dist < minDistToTarget)
+			{
+				minDistToTarget = dist;
+				targetIndex = i;
+				foundUnderwater = true;
+			}
+		}
+	}
+	
+	// Second pass: if no underwater, use any open node
+	if (!foundUnderwater)
+	{
+		for (int i = 0; i < totalNodes; i++)
+		{
+			if (gridOpen[i] || i == startIndex)
+			{
+				float dx = grid[i].x - target.x;
+				float dy = grid[i].y - target.y;
+				float dist = dx*dx + dy*dy;
+				
+				if (dist < minDistToTarget)
+				{
+					minDistToTarget = dist;
+					targetIndex = i;
+				}
+			}
+		}
+	}
+	
+	// if could not find target node
+	if (targetIndex == -1)
+	{
+		point directPath[2];
+		directPath[0] = grid[startIndex];
+		directPath[0].z = safeFlyingHeight;
+		directPath[1] = target;
+		directPath[1].z = safeFlyingHeight;
+		return directPath;
+	}
+	
+	// Temporarily mark target as open for A*
+	bool targetOriginallyOpen = gridOpen[targetIndex];
+	gridOpen[targetIndex] = true;
+	
+	if (startIndex == targetIndex)
+	{
+		point shortPath[2];
+		shortPath[0] = grid[startIndex];
+		shortPath[0].z = safeFlyingHeight;
+		shortPath[1] = target;
+		shortPath[1].z = safeFlyingHeight;
+		return shortPath;
+	}
+	
+	// === A* SEARCH ===
+	// Initialize costs
+	for (int i = 0; i < totalNodes; i++)
+	{
+		gCost[i] = 999999.0;
+		fCost[i] = 999999.0;
+		gridVisited[i] = false;
+		gridParent[i] = -1;
+	}
+	
+	gCost[startIndex] = 0.0;
+	float dxStart = grid[startIndex].x - grid[targetIndex].x;
+	float dyStart = grid[startIndex].y - grid[targetIndex].y;
+	fCost[startIndex] = dxStart*dxStart + dyStart*dyStart;
+	
+	bool pathFound = false;
+	int nodesExplored = 0;
+	int maxNodes = totalNodes;
+	
+	// Pre-calculate target position for heuristic
+	float targetX = grid[targetIndex].x;
+	float targetY = grid[targetIndex].y;
+	
+	while (!pathFound && nodesExplored < maxNodes)
+	{
+		// Find unvisited node with lowest fCost
+		int current = -1;
+		float lowestF = 999999.0;
+		
+		for (int i = 0; i < totalNodes; i++)
+		{
+			if ((gridOpen[i] || i == targetIndex) && !gridVisited[i])
+			{
+				if (fCost[i] < lowestF)
+				{
+					lowestF = fCost[i];
+					current = i;
+				}
+			}
+		}
+		
+		if (current == -1) break;
+		
+		if (current == targetIndex)
+		{
+			pathFound = true;
+			break;
+		}
+		
+		gridVisited[current] = true;
+		nodesExplored++;
+		float currentG = gCost[current];
+		
+		// Explore neighbors using pre-computed offsets
+		int count = neighborCount[current];
+		for (int d = 0; d < count; d++)
+		{
+			int nextIndex = neighborOffsets[current][d];
+			
+			if ((gridOpen[nextIndex] || nextIndex == targetIndex) && !gridVisited[nextIndex])
+			{
+				float moveCost = moveCosts[d];
+				
+				// Add penalty for non-flat terrain
+				if (grid[nextIndex].z > 0.0 && flatground(grid[nextIndex], 0.2) < 0.5)
+				{
+					moveCost = moveCost + 5.0;
+				}
+				
+				float tentativeG = currentG + moveCost;
+				
+				if (tentativeG < gCost[nextIndex])
+				{
+					gridParent[nextIndex] = current;
+					gCost[nextIndex] = tentativeG;
+					
+					float dx = grid[nextIndex].x - targetX;
+					float dy = grid[nextIndex].y - targetY;
+					float heuristic = dx*dx + dy*dy;
+					
+					fCost[nextIndex] = tentativeG + heuristic;
+				}
+			}
+		}
+	}
+	
+	// Restore original open state
+	gridOpen[targetIndex] = targetOriginallyOpen;
+	
+	// === BUILD RETURN PATH ===
+	point pathPoints[totalNodes];
+	
+	if (pathFound)
+	{
+		// Count path length first
+		int pathLength = 0;
+		int currentNode = targetIndex;
+		while (currentNode != -1 && pathLength < totalNodes)
+		{
+			pathLength++;
+			currentNode = gridParent[currentNode];
+		}
+		
+		// Reconstruct path in correct order (start -> target)
+		currentNode = targetIndex;
+		for (int i = pathLength - 1; i >= 0; i--)
+		{
+			pathPoints[i] = grid[currentNode];
+			currentNode = gridParent[currentNode];
+		}
+		
+		// Last point is exactly the target
+		pathPoints[pathLength - 1].x = target.x;
+		pathPoints[pathLength - 1].y = target.y;
+		pathPoints[pathLength - 1].z = (target.z <= 0.0) ? safeFlyingHeight : target.z + 10.0;
+		
+		// Copy to return array of correct size
+		point result[pathLength];
+		for (int i = 0; i < pathLength; i++)
+		{
+			result[i] = pathPoints[i];
+			plantFlag(result[i],50); // Green Cross
+		}
+		return result;
+	}
+	else
+	{
+		point directPath[2];
+		directPath[0] = grid[startIndex];
+		directPath[0].z = safeFlyingHeight;
+		directPath[1] = target;
+		directPath[1].z = (target.z <= 0.0) ? safeFlyingHeight : target.z + 10.0;
+		return directPath;
+	}
+}
+
+public void object::escapeMountain(point hitPoint, point target)
+{
+	SatCom com();
+	
+	float z = this.position.z;
+	float ground = topo(com.spaceShip.position) - 7;
+	object enemy;
+	
+	// Find escape path
+	// Fly along the escape path with 10 m waypoint spacing
+	point pathPoints[] = findMountainEscape(hitPoint, target);
+	int pathLength = sizeof(pathPoints);
+	int i;
+	point p;
+	
+	if (pathLength < 4) return;
+	p = pathPoints[0];
+	if (p.z > 0)
+	{
+		landAndRest(p);
+	}
+	else
+	{
+		jet(1);
+	}
+	
+	for (i = 1; i < pathLength-1; i++)
+	{
+		p = pathPoints[i];
+		turn(direction(p));
+		while (distance2d(this.position,p) > 5)
+		{
+			if (distance2d(this.position,target) <= com.attackRange)
+			{
+				return;
+			}
+			
+			if (p.z < 0)
+			{
+				return;
+			}
+			
+			if (this.temperature > com.temperatureThreshold)
+			{
+				gotoSafeLZ();
+				return;
+			}
+			
+			float dir; // direction of point p from bot
+			float dis; // distance of point p from bot
+			float dif; // difference in altitude of point p & bot (relative to sea-level)
+			float ang; // flying angle must be -20 degrees favorable
+			dis = distance(this.position,p);
+			if (dis < 0.01) dis = 0.01;
+			dif = p.z-this.position.z;
+			ang = asin(dif/dis);
+			jet(1); // thrust until 20 degress above target
+			dir = direction(p); 
+			motor(1-dir/22.5,1+dir/22.5);// move towards the point p
+		}
 	}
 }
