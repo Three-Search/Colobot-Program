@@ -2,6 +2,12 @@
 12 July 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
+For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
+1. Lazy initialization (compute when needed)
+2. Shared caching (all functions use same cache)
+3. Passive preloading (cache during flight)
+4. Progressive speedup (gets faster with use)
+5. Zero upfront cost (no pre-computation)
 
 Usage:
 
