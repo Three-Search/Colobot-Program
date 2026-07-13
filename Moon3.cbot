@@ -4,20 +4,20 @@ extern void object::Moon3()
 	
 	while(radar(Target2)!=null)
 	{
-		fly(Target2);
+		fly2(Target2);
 	}
 	
 	item = radar(SpaceShip);
 	goto(item.position);
 }
 
-public void object::fly(int c)
+public void object::fly2(int c)
 {
 	object o = radar(c);
-	fly(o);
+	fly2(o);
 }
 
-public void object::fly(object o)
+public void object::fly2(object o)
 {
 	while (o != null)
 	{
