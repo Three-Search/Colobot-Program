@@ -1,5 +1,5 @@
 /*
-9 July 2026
+12 July 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 
@@ -158,11 +158,11 @@ public class Queue
 		// Clean up null at the front of the queue before peeking
 		if (front != rear && items[front] == null)
 		{
-				front = (front + 1) % length;
+			front = (front + 1) % length;
 		}
 		if (isEmpty())
 		{
-			Message("Queue is empty. Could not peak at the front object");
+			Message("Queue is empty. Could not peek at the front object");
 			unlock();
 			return null;
 		}
@@ -227,9 +227,13 @@ public class SatCom
 	static float attackRange = 42;
 	static float phazerAttackRange = 60;
 	static bool checkLOS = true;
-	static bool plantFlag = false;
+	static bool plantFlag = true;
 	static float minAimAngle = -15;
 	static float maxAimAngle = 18;
+	
+	static float sqrt3 = 1.73205;
+	static float sqrt2 = 1.41421;
+	static float PI = 3.1416;
 	
 	static object me;
 	static object spaceShip;
@@ -251,6 +255,17 @@ public class SatCom
 	static bool[] bools;
 	static float[] floats;
 	static int[] ints;
+	
+	static int gridSize = 81;
+	static int totalNodes = 6561; // 81 * 81
+	static float nodeSpacing = 10;
+	static int centerX = 40;
+	static int centerY = 40;
+	
+	// === SINGLE CACHE ARRAY (GENIUS!) ===
+	// 999 = Not initialized
+	static float gridZ[6561];  // Store actual heights
+	static int currentIdx = -1;
 	
 	public void SatCom()
 	{
@@ -848,8 +863,15 @@ public class SatCom
 		CATEGORY_NAMES[903] = "ApolloModule";
 		CATEGORY_NAMES[904] = "ApolloAntenna";
 		CATEGORY_NAMES[910] = "Home";
+		
+		gridZ[totalNodes-1] = 999;
+		for (int i = 0; i < totalNodes; i++)
+		{
+			gridZ[i] = 999;
+		}
+		currentIdx = 999;
 	}
-	
+		
 	void initFlatSpacesAroundShip(float flatmin, float radius, int numPoints)
 	{
 		object item;
@@ -895,6 +917,112 @@ public class SatCom
 		
 		return m;
 	}
+}
+
+// Helper: get world X from index
+public float getNodeX(int idx)
+{
+	SatCom com();
+	int x = idx % com.gridSize;
+	return (x - com.centerX) * com.nodeSpacing;
+}
+
+// Helper: get world Y from index
+public float getNodeY(int idx)
+{
+	SatCom com();
+	int y = idx / com.gridSize;
+	return (y - com.centerY) * com.nodeSpacing;
+}
+
+// Helper: get world Z from index
+public float getNodeZ(int idx)
+{
+	SatCom com();
+	float t;
+	point p;
+	
+	if (com.gridZ[idx] < 999)
+	{
+		return com.gridZ[idx];
+	}
+	
+	p.x = getNodeX(idx);
+	p.y = getNodeY(idx);
+	com.gridZ[idx] = topo(p);
+	return com.gridZ[idx];
+}
+
+// Helper: get index from world point
+public int getNodeIndex(point p)
+{
+	SatCom com();
+	int x = round(p.x / com.nodeSpacing) + com.centerX;
+	int y = round(p.y / com.nodeSpacing) + com.centerY;
+	if (x < 0) x = 0;
+	if (x >= com.gridSize) x = com.gridSize - 1;
+	if (y < 0) y = 0;
+	if (y >= com.gridSize) y = com.gridSize - 1;
+	return y * com.gridSize + x;
+}
+
+// Helper: get neighbor index by direction
+// idx = current node index
+// d = direction (0-7)
+// Returns neighbor index, or -1 if out of bounds
+public int getNeighborIndex(int idx, int d)
+{
+	SatCom com();
+	
+	// Get current grid coordinates
+	int x = idx % com.gridSize;
+	int y = idx / com.gridSize;
+	
+	// Direction offsets
+	int dx, dy;
+	
+	switch (d)
+	{
+		case 0:  // Up
+			dx = 0; dy = -1;
+			break;
+		case 1:  // Up-Right
+			dx = 1; dy = -1;
+			break;
+		case 2:  // Right
+			dx = 1; dy = 0;
+			break;
+		case 3:  // Down-Right
+			dx = 1; dy = 1;
+			break;
+		case 4:  // Down
+			dx = 0; dy = 1;
+			break;
+		case 5:  // Down-Left
+			dx = -1; dy = 1;
+			break;
+		case 6:  // Left
+			dx = -1; dy = 0;
+			break;
+		case 7:  // Up-Left
+			dx = -1; dy = -1;
+			break;
+		default:
+			return -1;  // Invalid direction,
+	}
+	
+	// Calculate neighbor coordinates
+	int nx = x + dx;
+	int ny = y + dy;
+	
+	// Check bounds
+	if (nx < 0 || nx >= com.gridSize || ny < 0 || ny >= com.gridSize)
+	{
+		return -1;  // Out of bounds,
+	}
+	
+	// Return neighbor index
+	return ny * com.gridSize + nx;
 }
 
 public void object::missionComplete()
@@ -967,6 +1095,16 @@ public float object::flatRequire(int c)
 	return f;
 }
 
+public float object::max(float f1, float f2)
+{
+	return (f1 > f2 ? f1 : f2);
+}
+
+public float object::min(float f1, float f2)
+{
+	return (f1 < f2 ? f1 : f2);
+}
+
 public float object::mid(float f1, float f2)
 {
 	return (f1 + f2)/2;
@@ -980,26 +1118,27 @@ public point object::mid(point p1, point p2)
 
 public point object::mid(point p1, point p2, float d)
 {
-		// Calculate the direction vector from p1 to p2
-		float dirX = p2.x - p1.x;
-		float dirY = p2.y - p1.y;
-		float dirZ = p2.z - p1.z;
-		
-		// Calculate the length of the direction vector
-		float length = sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
-		
-		// Normalize the direction vector
-		float unitX = dirX / length;
-		float unitY = dirY / length;
-		float unitZ = dirZ / length;
-		
-		// Calculate the new point at the specified distance from p2
-		point m;
-		m.x = p2.x - unitX * d;
-		m.y = p2.y - unitY * d;
-		m.z = p2.z - unitZ * d;
-		
-		return m;
+	// return mid point between p1 and p2 and d m from p2
+	// Calculate the direction vector from p1 to p2
+	float dirX = p2.x - p1.x;
+	float dirY = p2.y - p1.y;
+	float dirZ = p2.z - p1.z;
+	
+	// Calculate the length of the direction vector
+	float length = sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
+	
+	// Normalize the direction vector
+	float unitX = dirX / length;
+	float unitY = dirY / length;
+	float unitZ = dirZ / length;
+	
+	// Calculate the new point at the specified distance from p2
+	point m;
+	m.x = p2.x - unitX * d;
+	m.y = p2.y - unitY * d;
+	m.z = p2.z - unitZ * d;
+	
+	return m;
 }
 
 public point object::awayShipPoint(point p)
@@ -1297,15 +1436,15 @@ public void object::jetPower(point p)
 	float ang = asin(dif/dis);
 	if (dis <= 60)
 	{
-		jet(1-(ang/-18)); // thrust until 18 degress above target
+		jet(1-(ang/-18)); // thrust until 18 degrees above target
 	}
 	else if (60 < dis && dis < 120)
 	{
-		jet(1-(ang/-16)); // thrust until 16 degress above target
+		jet(1-(ang/-16)); // thrust until 16 degrees above target
 	}
 	else
 	{
-		jet(1-(ang/-12)); // thrust until 12 degress above target
+		jet(1-(ang/-12)); // thrust until 12 degrees above target
 	}
 }
 
@@ -1357,7 +1496,7 @@ public void object::fly(point p)
 					dir -= 180;
 				}
 				turn(dir);
-				Message("Too near to GraviPlant. Pull back to avoid danger zone");				
+				Message("Too close to GraviPlant! Retreating...");
 				while (distance2d(this.position,root.position) <= com.safeRoot)
 				{
 					jet(0.5);
@@ -1403,20 +1542,24 @@ public void object::fly(point p)
 		return;
 	}
 	
-	for (int i = 30; i > 0; i--)
-	{
-		hit = aheadPoint(i,i-60);
-		if (topo(hit) - 1 > this.position.z)
-		{
-			dir = 60-i;
-			motorPower(dir);
-			return;
-		}
-	}
-		
 	jetPower(p);
-	dir = direction(p); 
-	motorPower(dir);
+	motorPower(direction(p));
+	
+	// cache gridZ and landable
+	point m = mid(this.position,p);
+	int idx = getNodeIndex(m);
+	if (com.currentIdx > -1 && idx != com.currentIdx && com.gridZ[idx] == 999)
+	{
+		Message("Caching gridZ...");
+		float z = getNodeZ(idx);
+		for (int d = 0; d < 8; d++)
+		{
+			int nextIndex = getNeighborIndex(idx, d);
+			if (nextIndex == -1) continue;  // Out of bounds
+			z = getNodeZ(nextIndex);
+		}
+		com.currentIdx = idx;
+	}
 }
 
 public void object::fly2p(point p)
@@ -1432,14 +1575,14 @@ public void object::fly2p(point p)
 	
 	if (p.z < 0)
 	{
-		Message("fly2p can not fly to point under water");
+		Message("Cannot fly to underwater point");
 		return;
 	}
 	turn(direction(p));
 	dis2d = distance2d(this.position,p);
 	if (dis2d <= 5.5)
 	{
-		Message("fly2p point is within 5.5 m, turn and move forward to point");
+		com.returnMessage = "Target is within 5.5m, moving forward";
 		i = 0;
 		while (dis2d > 1 && i < 20)
 		{
@@ -1456,13 +1599,13 @@ public void object::fly2p(point p)
 		}
 		return;
 	}
-	Message("fly2p flying to point...");
+	com.returnMessage = "Flying to target point...";
 	while (dis2d > 5.5)
 	{
 		fly(p);
 		dis2d = distance2d(this.position,p);
 	}
-	Message("fly2p landing on point...");
+	com.returnMessage = "Landing on target point...";
 	i = 0;
 	motor(0,0);
 	while (this.altitude > 0.2 && i < 100)
@@ -1866,7 +2009,7 @@ public void object::waitForResearch(int c)
 	{
 		if (i == 0)
 		{
-			Message("Wait for research to complete");
+			Message("Waiting for research to complete...");
 		}
 		i++;
 		wait(5);
@@ -1881,7 +2024,7 @@ public bool object::astronautOnShip()
 	
 	if (distance2d(me.position,ship.position) > 7)
 	{
-		Message("Astronaut, please go back to SpaceShip so that we can take off");
+		Message("Astronaut, return to SpaceShip for takeoff");
 		return false;
 	}
 	return true;
@@ -2108,12 +2251,12 @@ public void object::repair()
 	{
 		if (category == WingedShooter || category == WingedOrgaShooter)
 		{
-			Message("RepairCenter is in used, land and wait for release");
+			Message("RepairCenter is in use, land and wait for release");
 			gotoSafeLZ(repairCenter);
 		}
 		else
 		{
-			Message("RepairCenter is in used, go nearby RepairCenter and wait for release");
+			Message("RepairCenter is in use, go nearby RepairCenter and wait for release");
 			p = randomFreePoint(repairCenter.position,10,30); 
 			go(p);
 		}
@@ -2195,12 +2338,12 @@ public void object::chargeCell()
 	{
 		if (category == WingedShooter || category == WingedOrgaShooter)
 		{
-			Message("PowerStation is in used, land and wait for release");
+			Message("PowerStation is in use, land and wait for release");
 			gotoSafeLZ(powerStation);
 		}
 		else
 		{
-			Message("PowerStation is in used, go nearby PowerStation and wait for release");
+			Message("PowerStation is in use, go nearby PowerStation and wait for release");
 			p = randomFreePoint(powerStation.position,10,30); 
 			go(p);
 		}
@@ -2779,7 +2922,7 @@ public point object::flatSpace()
 	}
 	else
 	{
-		Message("Could not find flatSpace");
+		Message("No flat space found in designated area");
 		com.returnCode = 1;
 	}
 	return empty;
@@ -3496,15 +3639,11 @@ public void object::moveAndDestroy(object target)
 		// do not check hit mountain and trigger escapeMountain finding if the bot is flying on water
 		if (category == WingedShooter || category == WingedOrgaShooter)
 		{
-			behind = behindPoint(10);
-			if (topo(behind) > 0)
+			hit = sensor(1.5,target.position);
+			if (hit.z > 0)
 			{
-				hit = sensor(1.5,target.position);
-				if (hit.z > 0)
-				{
-					motor(-0.3,-0.3);
-					escapeMountain(hit,target.position);
-				}
+				motor(-0.1,-0.1);
+				escapeMountain(this.position,target.position);
 			}
 		}
 	}
@@ -3684,11 +3823,9 @@ public bool object::isLandingPoint(point p)
 {
 	SatCom com();
 	
-	if (p.z < com.safeTopo) return false;
-	if (p.z > this.position.z + 2.5) return false;
 	if (!isFlat(p,com.safeFlatGround)) return false;
 	if (distance2GraviPlant(p) < com.safeRoot) return false;
-	//if (distance2Enemies(p) < com.safeAnt/2) return false;
+	//if (distance2Enemies(p) < com.safeAnt*3/2) return false;
 	if (!checkLOS(p)) return false;
 	return true;
 }
@@ -3697,12 +3834,11 @@ public point object::searchSafeLZ(point botPos)
 {
 	SatCom com();
 	
-	int gridSize = 51;
-	float nodeSpacing = 5;
-	int centerX = 25;
-	int centerY = 25;
+	int botIdx = getNodeIndex(botPos);
+	int botX = botIdx % com.gridSize;
+	int botY = botIdx / com.gridSize;
 	
-	for (int radius = 1; radius <= centerX; radius++)
+	for (int radius = 1; radius <= 15; radius++)
 	{
 		int nodesOnSquare = radius * 8;
 		
@@ -3731,18 +3867,48 @@ public point object::searchSafeLZ(point botPos)
 				dy = radius - (i - radius * 6) - 1;
 			}
 			
-			int gridX = centerX + dx;
-			int gridY = centerY + dy;
+			int gridX = botX + dx;
+			int gridY = botY + dy;
 			
-			if (gridX < 0 || gridX >= gridSize || gridY < 0 || gridY >= gridSize) continue;
+			if (gridX < 0 || gridX >= com.gridSize || gridY < 0 || gridY >= com.gridSize) continue;
 			
-			// Calculate point position ON THE FLY (no grid array needed!)
-			point p;
-			p.x = botPos.x + dx * nodeSpacing;  // dx is already relative to center!
-			p.y = botPos.y + dy * nodeSpacing;  // dy is already relative to center!
-			p.z = topo(p);
-			if (!isLandingPoint(p)) continue;			
-			return p;
+			int idx = gridY * com.gridSize + gridX;
+			
+			// === CANDIDATE CHECK ===
+			float candidateZ = getNodeZ(idx);
+			if (candidateZ < com.safeTopo) continue;
+			if (candidateZ > botPos.z + 2.5) continue;
+			
+			point center;
+			center.x = getNodeX(idx);
+			center.y = getNodeY(idx);
+			center.z = candidateZ;
+			
+			if (isLandingPoint(center))
+			{
+				return center;
+			}
+			
+			// === 4 MIDPOINTS (sqrt(50) ˜ 7.07m) ===
+			float radius_mid = 7.07;
+			float dirX[] = {1, 1, -1, -1};
+			float dirY[] = {1, -1, -1, 1};
+			
+			for (int d = 0; d < 4; d++)
+			{
+				point p;
+				p.x = center.x + dirX[d] * radius_mid;
+				p.y = center.y + dirY[d] * radius_mid;
+				p.z = topo(p);
+				
+				if (p.z < com.safeTopo) continue;
+				if (p.z > botPos.z + 2.5) continue;
+				
+				if (isLandingPoint(p))
+				{
+					return p;
+				}
+			}
 		}
 	}
 	
@@ -3757,7 +3923,6 @@ public void object::gotoSafeLZ(object o)
 {
 	SatCom com();
 	
-	Message("Searching safe landing point...");
 	float t = abstime();
 	point landingPoint = searchSafeLZ(this.position);
 	if (landingPoint.x == 0 && landingPoint.y == 0 && landingPoint.z == 0)
@@ -3808,7 +3973,7 @@ public void object::checkEnemyWhenInLoop()
 	object enemy = radar(com.ants,0,360,0,com.attackRange);
 	if (enemy != null)
 	{
-		Message("Enemy is within attack range when the boot is trying to do something else in a loop, turn to and shoot at the enemy");
+		Message("Enemy detected in attack range! Attacking...");
 		float dir = direction(enemy.position);
 		// Normalize the angle
 		if (dir > 180)
@@ -3836,9 +4001,7 @@ public void object::landAndRest(point p)
 	
 	plantFlag(p,52); // Yellow Circle
 	
-	Message("landAndRest flying to rest point...");
 	fly2p(p);
-	Message("landAndRest reached the rest point, resting...");
 	while (this.temperature > 0)
 	{
 		while (this.altitude > 0 && this.temperature > 0)
@@ -4094,7 +4257,7 @@ public void object::airAttack(object o,float radius)
 	i = 0;
 	last = this.position;
 	while (true)
-	{		
+	{
 		if (com.detectedEgg && !com.detectedWasp)
 		{
 			if (radar(AlienWasp) != null)
@@ -5268,427 +5431,331 @@ public void object::AirAim(object target)
 	}
 }
 
-public point[] object::searchEscapeMountainPath(point hitPoint, point target)
+public point[] object::searchEscapeMountainPath(point botPoint, point target)
 {
 	SatCom com();
 	
-	int gridSize = 25;
-	int totalNodes = gridSize * gridSize;
-	float nodeSpacing = 10;
+	// === USE SATCOM GRID SYSTEM ===
+	int gridSize = com.gridSize;		// 81
+	int totalNodes = com.totalNodes;	// 6561
+	float nodeSpacing = com.nodeSpacing; // 10
+	int centerX = com.centerX;		  // 40
+	int centerY = com.centerY;		  // 40
+	
+	// for square grid, we need diagonal costs
 	float diagonal = nodeSpacing * sqrt(2.0);
 	float orthogonal = nodeSpacing;
-	int centerX = 12;
-	int centerY = 12;
-	int centerIndex = centerY * gridSize + centerX;
-	
-	int dirX[] = {-1, 0, 1, -1, 1, -1, 0, 1};
-	int dirY[] = {-1, -1, -1, 0, 0, 1, 1, 1};
-	
-	// Pre-calculated move costs (diagonal = nodeSpacing * sqrt(2), orthogonal = nodeSpacing)
 	float moveCosts[] = {diagonal, orthogonal, diagonal, orthogonal, orthogonal, diagonal, orthogonal, diagonal};
+	float underwaterPenalty = 5.0;
 	
-	// Pre-compute neighbor offsets
-	int neighborOffsets[totalNodes][8];
-	int neighborCount[totalNodes];
+	// LiteRBS arrays
+	bool visitedStart[totalNodes];
+	int parentStart[totalNodes];
+	float gStart[totalNodes];
 	
-	for (int y = 0; y < gridSize; y++)
-	{
-		for (int x = 0; x < gridSize; x++)
-		{
-			int idx = y * gridSize + x;
-			int count = 0;
-			for (int d = 0; d < 8; d++)
-			{
-				int nx = x + dirX[d];
-				int ny = y + dirY[d];
-				if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize)
-				{
-					neighborOffsets[idx][count] = ny * gridSize + nx;
-					count++;
-				}
-			}
-			neighborCount[idx] = count;
-		}
-	}
+	bool visitedTarget[totalNodes];
+	int parentTarget[totalNodes];
+	float gTarget[totalNodes];
 	
-	// Arrays
-	point grid[totalNodes];
-	bool gridOpen[totalNodes];
-	bool gridVisited[totalNodes];
-	int gridParent[totalNodes];
-	float gCost[totalNodes];
-	float fCost[totalNodes];
-	float terrainHeights[totalNodes];
+	int frontierStart[totalNodes];
+	int frontierStartSize = 0;
+	int frontierTarget[totalNodes];
+	int frontierTargetSize = 0;
 	
-	float hitTopo = topo(hitPoint);
+	int meetingNode = -1;
+	float bestPathCost = 999999.0;
 	
-	// === FAST PATH: Check direct flight ===
-	float hitHeight = hitPoint.z;
-	float targetHeight = target.z;
-	float hitGround = topo(hitPoint);
-	float targetGround = topo(target);
-	
-	if (hitHeight > hitGround + 15.0 && targetHeight > targetGround + 15.0)
-	{
-		point directPath[2];
-		directPath[0] = hitPoint;
-		directPath[1] = target;
-		return directPath;
-	}
-	
-	// === IDENTIFY GROUND LEVEL ===
-	int terrainCount = 0;
-	float groundLevel = 0.0;
-	
-	// Build grid and collect terrain heights in one pass
-	for (int y = 0; y < gridSize; y++) {
-		for (int x = 0; x < gridSize; x++) {
-			int index = y * gridSize + x;
-			
-			grid[index].x = hitPoint.x + (x - centerX) * nodeSpacing;
-			grid[index].y = hitPoint.y + (y - centerY) * nodeSpacing;
-			grid[index].z = topo(grid[index]);
-			
-			// Collect flat terrain heights
-			if (0 < grid[index].z && grid[index].z < hitTopo)
-			{
-				if (flatground(grid[index],0.2) > 0)
-				{
-					terrainHeights[terrainCount] = grid[index].z;
-					terrainCount++;
-				}
-			}
-		}
-	}
-	
-	// Find median using quickselect (O(n) instead of O(n log n))
-	if (terrainCount > 0)
-	{
-		int targetIdx = terrainCount / 2;
-		int left = 0;
-		int right = terrainCount - 1;
-		
-		while (left < right)
-		{
-			float pivot = terrainHeights[right];
-			int partition = left;
-			
-			for (int i = left; i < right; i++)
-			{
-				if (terrainHeights[i] <= pivot)
-				{
-					float temp = terrainHeights[i];
-					terrainHeights[i] = terrainHeights[partition];
-					terrainHeights[partition] = temp;
-					partition++;
-				}
-			}
-			
-			float temp = terrainHeights[right];
-			terrainHeights[right] = terrainHeights[partition];
-			terrainHeights[partition] = temp;
-			
-			if (partition == targetIdx) break;
-			if (partition < targetIdx)
-			{
-				left = partition + 1;
-			}
-			else
-			{
-				right = partition - 1;
-			}
-		}
-		groundLevel = terrainHeights[targetIdx];
-	}
-	else
-	{
-		groundLevel = topo(com.spaceShip.position) - 7;
-	}
-	
+	float groundLevel = topo(com.spaceShip.position) - 7;
 	float safeFlyingHeight = groundLevel + 10.0;
-	float minFlyingHeight = groundLevel + 5.0;
 	
-	// === CLASSIFY NODES ===
-	for (int idx = 0; idx < totalNodes; idx++)
-	{
-		bool isGround = (0 < grid[idx].z && grid[idx].z <= minFlyingHeight);
-		bool isWater = (grid[idx].z <= 0);
-		gridOpen[idx] = (isGround || isWater);
-		gridVisited[idx] = false;
-		gridParent[idx] = -1;
-	}
+	// === CENTER GRID AT MIDPOINT ===
+	// We need to find the center point in world coordinates
+	// The grid is fixed at (0,0) center, but we need to map bot/target to grid indices
+	// Since grid is fixed at world center (0,0), we just use getNodeIndex()
 	
-	// Hit point is always blocked
-	grid[centerIndex].x = hitPoint.x;
-	grid[centerIndex].y = hitPoint.y;
-	grid[centerIndex].z = hitTopo;
-	gridOpen[centerIndex] = false;
+	// === FIND START AND TARGET NODES ===
+	int startIndex = getNodeIndex(botPoint);
+	int targetIndex = getNodeIndex(target);
+		
+	// Plant flags for start and target
+	point startPoint;
+	startPoint.x = getNodeX(startIndex);
+	startPoint.y = getNodeY(startIndex);
+	startPoint.z = getNodeZ(startIndex);
+	plantFlag(startPoint, YellowFlag);
 	
-	// === FIND START NODE ===
-	int startIndex = -1;
-	float minDistToHit = 999999.0;
-	point b;
-	b = this.position;
-	
-	// Check 8 neighbors first
-	for (int d = 0; d < 8; d++)
-	{
-		int nx = centerX + dirX[d];
-		int ny = centerY + dirY[d];
-		if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize)
-		{
-			int neighborIndex = ny * gridSize + nx;
-			// find open node, water node or flat node (not on mountain slope node), nearest to bot
-			if (gridOpen[neighborIndex] && (grid[neighborIndex].z < 0 || flatground(grid[neighborIndex], 0.2) > 0))
-			{
-				float dx = grid[neighborIndex].x - b.x;
-				float dy = grid[neighborIndex].y - b.y;
-				float dist = dx*dx + dy*dy;
-				if (dist < minDistToHit)
-				{
-					minDistToHit = dist;
-					startIndex = neighborIndex;
-				}
-			}
-		}
-	}
-	
-	// If not found, expand search to 2-cell radius
-	if (startIndex == -1)
-	{
-		for (int dy = -2; dy <= 2; dy++)
-		{
-			for (int dx = -2; dx <= 2; dx++)
-			{
-				if (abs(dx) <= 1 && abs(dy) <= 1) continue;
-				
-				int nx = centerX + dx;
-				int ny = centerY + dy;
-				if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize)
-				{
-					int neighborIndex = ny * gridSize + nx;
-					
-					if (gridOpen[neighborIndex] && (grid[neighborIndex].z < 0 || flatground(grid[neighborIndex], 0.2) > 0))
-					{
-						float dxx = grid[neighborIndex].x - b.x;
-						float dyy = grid[neighborIndex].y - b.y;
-						float dist = dxx*dxx + dyy*dyy;
-						
-						if (dist < minDistToHit)
-						{
-							minDistToHit = dist;
-							startIndex = neighborIndex;
-						}
-					}
-				}
-			}
-		}
-	}
-	
-	// if could not find start node
-	if (startIndex == -1)
-	{
-		point emptyPath[0];
-		return emptyPath;
-	}
-	
-	// === FIND TARGET NODE ===
-	int targetIndex = -1;
-	float minDistToTarget = 999999.0;
-	bool foundUnderwater = false;
-	
-	// First pass: try to find underwater node
-	for (int i = 0; i < totalNodes; i++)
-	{
-		if (grid[i].z < 0)
-		{
-			float dx = grid[i].x - target.x;
-			float dy = grid[i].y - target.y;
-			float dist = dx*dx + dy*dy;
-			
-			if (dist < minDistToTarget)
-			{
-				minDistToTarget = dist;
-				targetIndex = i;
-				foundUnderwater = true;
-			}
-		}
-	}
-	
-	// Second pass: if no underwater, use any open node
-	if (!foundUnderwater)
-	{
-		for (int i = 0; i < totalNodes; i++)
-		{
-			if (gridOpen[i] || i == startIndex)
-			{
-				float dx = grid[i].x - target.x;
-				float dy = grid[i].y - target.y;
-				float dist = dx*dx + dy*dy;
-				
-				if (dist < minDistToTarget)
-				{
-					minDistToTarget = dist;
-					targetIndex = i;
-				}
-			}
-		}
-	}
-	
-	// if could not find target node
-	if (targetIndex == -1)
-	{
-		point directPath[2];
-		directPath[0] = grid[startIndex];
-		directPath[0].z = safeFlyingHeight;
-		directPath[1] = target;
-		directPath[1].z = safeFlyingHeight;
-		return directPath;
-	}
-	
-	// Temporarily mark target as open for A*
-	bool targetOriginallyOpen = gridOpen[targetIndex];
-	gridOpen[targetIndex] = true;
+	point targetPoint;
+	targetPoint.x = getNodeX(targetIndex);
+	targetPoint.y = getNodeY(targetIndex);
+	targetPoint.z = getNodeZ(targetIndex);
+	plantFlag(targetPoint, GreenFlag);
 	
 	if (startIndex == targetIndex)
 	{
 		point shortPath[2];
-		shortPath[0] = grid[startIndex];
+		shortPath[0] = botPoint;
 		shortPath[0].z = safeFlyingHeight;
 		shortPath[1] = target;
 		shortPath[1].z = safeFlyingHeight;
 		return shortPath;
 	}
 	
-	// === A* SEARCH ===
-	// Initialize costs
+	// === INITIALIZE FRONTIERS ===
 	for (int i = 0; i < totalNodes; i++)
 	{
-		gCost[i] = 999999.0;
-		fCost[i] = 999999.0;
-		gridVisited[i] = false;
-		gridParent[i] = -1;
+		visitedStart[i] = false;
+		parentStart[i] = -1;
+		gStart[i] = 999999.0;
+		
+		visitedTarget[i] = false;
+		parentTarget[i] = -1;
+		gTarget[i] = 999999.0;
 	}
 	
-	gCost[startIndex] = 0.0;
-	float dxStart = grid[startIndex].x - grid[targetIndex].x;
-	float dyStart = grid[startIndex].y - grid[targetIndex].y;
-	fCost[startIndex] = dxStart*dxStart + dyStart*dyStart;
+	visitedStart[startIndex] = true;
+	gStart[startIndex] = 0.0;
+	parentStart[startIndex] = -1;
+	frontierStart[frontierStartSize] = startIndex;
+	frontierStartSize++;
+	
+	visitedTarget[targetIndex] = true;
+	gTarget[targetIndex] = 0.0;
+	parentTarget[targetIndex] = -1;
+	frontierTarget[frontierTargetSize] = targetIndex;
+	frontierTargetSize++;
 	
 	bool pathFound = false;
 	int nodesExplored = 0;
 	int maxNodes = totalNodes;
 	
-	// Pre-calculate target position for heuristic
-	float targetX = grid[targetIndex].x;
-	float targetY = grid[targetIndex].y;
-	
+	// === MAIN LITERBS LOOP ===
 	while (!pathFound && nodesExplored < maxNodes)
 	{
-		// Find unvisited node with lowest fCost
-		int current = -1;
-		float lowestF = 999999.0;
+		// === EXPAND FROM START SIDE ===
+		int bestStart = -1;
+		float bestStartDist = 999999.0;
+		int bestStartFrontierIdx = -1;
 		
-		for (int i = 0; i < totalNodes; i++)
+		for (int i = 0; i < frontierStartSize; i++)
 		{
-			if ((gridOpen[i] || i == targetIndex) && !gridVisited[i])
+			int idx = frontierStart[i];
+			float dx = getNodeX(idx) - getNodeX(targetIndex);
+			float dy = getNodeY(idx) - getNodeY(targetIndex);
+			float dist = dx*dx + dy*dy;
+			if (dist < bestStartDist)
 			{
-				if (fCost[i] < lowestF)
-				{
-					lowestF = fCost[i];
-					current = i;
-				}
+				bestStartDist = dist;
+				bestStart = idx;
+				bestStartFrontierIdx = i;
 			}
 		}
 		
-		if (current == -1) break;
-		
-		if (current == targetIndex)
+		if (bestStart != -1)
 		{
-			pathFound = true;
-			break;
-		}
-		
-		gridVisited[current] = true;
-		nodesExplored++;
-		float currentG = gCost[current];
-		
-		// Explore neighbors using pre-computed offsets
-		int count = neighborCount[current];
-		for (int d = 0; d < count; d++)
-		{
-			int nextIndex = neighborOffsets[current][d];
+			// Remove from frontier
+			frontierStart[bestStartFrontierIdx] = frontierStart[frontierStartSize - 1];
+			frontierStartSize--;
 			
-			if ((gridOpen[nextIndex] || nextIndex == targetIndex) && !gridVisited[nextIndex])
+			int current = bestStart;
+			nodesExplored++;
+			
+			// Check if current is in target frontier
+			bool inTargetFrontier = false;
+			for (int i = 0; i < frontierTargetSize; i++)
 			{
-				float moveCost = moveCosts[d];
-				
-				// Add penalty for non-flat terrain
-				if (grid[nextIndex].z > 0.0 && flatground(grid[nextIndex], 0.2) < 0.5)
+				if (frontierTarget[i] == current)
 				{
-					moveCost = moveCost + 5.0;
-				}
-				
-				float tentativeG = currentG + moveCost;
-				
-				if (tentativeG < gCost[nextIndex])
-				{
-					gridParent[nextIndex] = current;
-					gCost[nextIndex] = tentativeG;
-					
-					float dx = grid[nextIndex].x - targetX;
-					float dy = grid[nextIndex].y - targetY;
-					float heuristic = dx*dx + dy*dy;
-					
-					fCost[nextIndex] = tentativeG + heuristic;
+					inTargetFrontier = true;
+					break;
 				}
 			}
+			
+			if (inTargetFrontier)
+			{
+				meetingNode = current;
+				bestPathCost = gStart[current] + gTarget[current];
+				pathFound = true;
+				break;
+			}
+			
+			// Expand neighbors using getNeighborIndex
+			for (int d = 0; d < 8; d++)
+			{
+				int nextIndex = getNeighborIndex(current, d);
+				if (nextIndex == -1) continue;  // Out of bounds
+				
+				// Use getNodeZ (cached) instead of gridOpen
+				float nextZ = getNodeZ(nextIndex);
+				bool isOpen = (nextZ < target.z + 3 || nextZ < groundLevel +3);
+				if (!isOpen || visitedStart[nextIndex]) continue;
+				
+				float moveCost = moveCosts[d];
+				// Check if underwater using getNodeZ (cached)
+				if (nextZ < 0)
+				{
+					moveCost = moveCost + underwaterPenalty;
+				}
+				
+				float tentativeG = gStart[current] + moveCost;
+				if (tentativeG < gStart[nextIndex])
+				{
+					gStart[nextIndex] = tentativeG;
+					parentStart[nextIndex] = current;
+					
+					if (!visitedStart[nextIndex])
+					{
+						visitedStart[nextIndex] = true;
+						frontierStart[frontierStartSize] = nextIndex;
+						frontierStartSize++;
+					}
+				}
+			}
+		}
+		
+		// === EXPAND FROM TARGET SIDE ===
+		int bestTarget = -1;
+		float bestTargetDist = 999999.0;
+		int bestTargetFrontierIdx = -1;
+		
+		for (int i = 0; i < frontierTargetSize; i++)
+		{
+			int idx = frontierTarget[i];
+			float dx = getNodeX(idx) - getNodeX(startIndex);
+			float dy = getNodeY(idx) - getNodeY(startIndex);
+			float dist = dx*dx + dy*dy;
+			if (dist < bestTargetDist)
+			{
+				bestTargetDist = dist;
+				bestTarget = idx;
+				bestTargetFrontierIdx = i;
+			}
+		}
+		
+		if (bestTarget != -1)
+		{
+			// Remove from frontier
+			frontierTarget[bestTargetFrontierIdx] = frontierTarget[frontierTargetSize - 1];
+			frontierTargetSize--;
+			
+			int current = bestTarget;
+			nodesExplored++;
+			
+			// Check if current is in start frontier
+			bool inStartFrontier = false;
+			for (int i = 0; i < frontierStartSize; i++)
+			{
+				if (frontierStart[i] == current)
+				{
+					inStartFrontier = true;
+					break;
+				}
+			}
+			
+			if (inStartFrontier)
+			{
+				meetingNode = current;
+				bestPathCost = gStart[current] + gTarget[current];
+				pathFound = true;
+				break;
+			}
+			
+			// Expand neighbors using getNeighborIndex
+			for (int d = 0; d < 8; d++)
+			{
+				int nextIndex = getNeighborIndex(current, d);
+				if (nextIndex == -1) continue;  // Out of bounds
+				float nextZ = getNodeZ(nextIndex);
+				bool isOpen = (nextZ < target.z + 3 || nextZ < groundLevel +3);
+				if (!isOpen || visitedTarget[nextIndex]) continue;
+				
+				float moveCost = moveCosts[d];
+				if (nextZ < 0)
+				{
+					moveCost = moveCost + underwaterPenalty;
+				}
+				
+				float tentativeG = gTarget[current] + moveCost;
+				if (tentativeG < gTarget[nextIndex])
+				{
+					gTarget[nextIndex] = tentativeG;
+					parentTarget[nextIndex] = current;
+					
+					if (!visitedTarget[nextIndex])
+					{
+						visitedTarget[nextIndex] = true;
+						frontierTarget[frontierTargetSize] = nextIndex;
+						frontierTargetSize++;
+					}
+				}
+			}
+		}
+		
+		if (frontierStartSize == 0 || frontierTargetSize == 0)
+		{
+			break;
 		}
 	}
 	
-	// Restore original open state
-	gridOpen[targetIndex] = targetOriginallyOpen;
-	
 	// === BUILD RETURN PATH ===
-	point pathPoints[totalNodes];
-	
-	if (pathFound)
+	if (pathFound && meetingNode != -1)
 	{
-		// Count path length first
-		int pathLength = 0;
-		int currentNode = targetIndex;
-		while (currentNode != -1 && pathLength < totalNodes)
+		// Build path from start to meeting
+		int pathLength1 = 0;
+		int tempPath1[totalNodes];
+		int currentNode = meetingNode;
+		while (currentNode != -1 && pathLength1 < totalNodes)
 		{
-			pathLength++;
-			currentNode = gridParent[currentNode];
+			tempPath1[pathLength1] = currentNode;
+			pathLength1++;
+			currentNode = parentStart[currentNode];
 		}
 		
-		// Reconstruct path in correct order (start -> target)
-		currentNode = targetIndex;
-		for (int i = pathLength - 1; i >= 0; i--)
+		// Build path from meeting to target (excluding meeting node)
+		int pathLength2 = 0;
+		int tempPath2[totalNodes];
+		currentNode = parentTarget[meetingNode];
+		while (currentNode != -1 && pathLength2 < totalNodes)
 		{
-			pathPoints[i] = grid[currentNode];
-			currentNode = gridParent[currentNode];
+			tempPath2[pathLength2] = currentNode;
+			pathLength2++;
+			currentNode = parentTarget[currentNode];
 		}
 		
-		// Last point is exactly the target
-		pathPoints[pathLength - 1].x = target.x;
-		pathPoints[pathLength - 1].y = target.y;
-		pathPoints[pathLength - 1].z = (target.z <= 0.0) ? safeFlyingHeight : target.z + 10.0;
+		// Combine paths
+		int totalPathLength = pathLength1 + pathLength2;
+		point result[totalPathLength];
+		int resultIndex = 0;
 		
-		// Copy to return array of correct size
-		point result[pathLength];
-		for (int i = 0; i < pathLength; i++)
+		// Add start to meeting path (in correct order)
+		for (int i = pathLength1 - 1; i >= 0; i--)
 		{
-			result[i] = pathPoints[i];
-			//plantFlag(result[i],Target2); // Flying target
+			int idx = tempPath1[i];
+			result[resultIndex].x = getNodeX(idx);
+			result[resultIndex].y = getNodeY(idx);
+			result[resultIndex].z = getNodeZ(idx);
+			plantFlag(result[resultIndex], Target2);
+			resultIndex++;
 		}
+		
+		// Add meeting to target path (in correct order)
+		for (int i = 0; i < pathLength2; i++)
+		{
+			int idx = tempPath2[i];
+			result[resultIndex].x = getNodeX(idx);
+			result[resultIndex].y = getNodeY(idx);
+			result[resultIndex].z = getNodeZ(idx);
+			plantFlag(result[resultIndex], Target2);
+			resultIndex++;
+		}
+		
+		Message("LiteRBS explored " + nodesExplored + " nodes, path length: " + totalPathLength);
 		return result;
 	}
 	else
 	{
+		Message("LiteRBS could not find path, falling back to direct path");
 		point directPath[2];
-		directPath[0] = grid[startIndex];
+		directPath[0] = botPoint;
 		directPath[0].z = safeFlyingHeight;
 		directPath[1] = target;
 		directPath[1].z = (target.z <= 0.0) ? safeFlyingHeight : target.z + 10.0;
@@ -5696,7 +5763,7 @@ public point[] object::searchEscapeMountainPath(point hitPoint, point target)
 	}
 }
 
-public void object::escapeMountain(point hitPoint, point target)
+public void object::escapeMountain(point botPoint, point target)
 {
 	SatCom com();
 	
@@ -5704,55 +5771,71 @@ public void object::escapeMountain(point hitPoint, point target)
 	float ground = topo(com.spaceShip.position) - 7;
 	object enemy;
 	
-	Message("Searching escape mountain path...");
+	gotoSafeLZ();
+	jet(-0.01);
+	motor(0,0);
 	float t = abstime();
-	point pathPoints[] = searchEscapeMountainPath(hitPoint, target);
+	float dir;
+	float dis;
+	Message("Searching mountain path...");
+	point pathPoints[] = searchEscapeMountainPath(this.position, target);
 	int pathLength = sizeof(pathPoints);
 	int i;
-	point p;
-	if (pathLength < 4) return;
-	Message("Found escape mountain path after " + (abstime()-t) + " second(s). Flying along the escape mountain path...");
-	p = pathPoints[0];
-	if (p.z > 0)
+	point p,next;
+	if (pathLength < 3)
 	{
-		landAndRest(p);
+		Message("Not found mountain path");
+		gotoSafeLZ();
+		return;
 	}
-	for (i = 1; i < pathLength-1; i++)
+	Message("Found mountain path after " + (abstime()-t) + " second(s). Flying along the mountain path...");
+	for (i = 1; i < pathLength; i++)
 	{
 		p = pathPoints[i];
+		if (i < pathLength - 1)
+		{
+			next = pathPoints[i+1];
+		}
+		else
+		{
+			next = p;
+		}
 		turn(direction(p));
-		while (distance2d(this.position,p) > 5)
+		dis = distance2d(this.position,target);
+		if (checkLOS(target) && dis > com.safeAnt)
+		{
+			Message("LOS to target clear, exit following path mode");
+			return;
+		}
+		while (distance2d(this.position,p) > 5 && distance2d(this.position,p) < distance2d(this.position,next))
 		{
 			if (distance2d(this.position,target) <= com.attackRange)
 			{
-				Message("Enemy is within attack range while escaping mountain, exit escape mode");
-				return;
-			}
-			
-			if (p.z < 0)
-			{
-				Message("Escape node is under water, escaped mountain");
-				return;
+				if (checkLOS(target))
+				{
+					Message("Enemy is within attack range while following the path, exit following path mode");
+					checkEnemyWhenInLoop();
+					return;
+				}
 			}
 			
 			if (this.temperature > com.temperatureThreshold)
 			{
-				Message("Engine temperature is too high, exit escape mode and goto safe landing point");
+				Message("Engine temperature is too high, exit following path mode and goto safe landing point");
 				gotoSafeLZ();
 				return;
 			}
 			
-			float dir; // direction of point p from bot
-			float dis; // distance of point p from bot
 			float dif; // difference in altitude of point p & bot (relative to sea-level)
 			float ang; // flying angle must be -20 degrees favorable
 			dis = distance(this.position,p);
 			if (dis < 0.01) dis = 0.01;
 			dif = p.z-this.position.z;
 			ang = asin(dif/dis);
-			jet(1); // thrust until 20 degress above target
-			dir = direction(p); 
-			motor(1-dir/22.5,1+dir/22.5);// move towards the point p
+			jet(1);
+			dir = direction(p);
+			//motor(1-dir/22.5,1+dir/22.5);
+			motorPower(dir);
 		}
 	}
 }
