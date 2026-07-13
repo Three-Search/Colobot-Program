@@ -12,7 +12,7 @@ extern void object::Centuary1()
 	
 	o = radar(NuclearCell);
 	p = freePoint(o.position);
-	fly(p);
+	go(p);
 	goGrab(NuclearCell);
 	o = radar(LeggedGrabber);
 	p = behindPoint(o,5);
@@ -36,6 +36,7 @@ extern void object::Centuary1()
 	wait(3);
 	motor(0,0);
 	missionComplete();
+	Message("Create a program in recycler bot to call Mission();");
 }
 
 public void object::Mission()
@@ -133,8 +134,7 @@ public void object::RecycleMission()
 	recycle();
 	turn(180);
 	move(7);
-	go(Wreck);
-	recycle();
 	go(space(position,10,20,4));
 	missionComplete();
+	Message("Create a program in legged grabber bot to call Mission();");
 }
