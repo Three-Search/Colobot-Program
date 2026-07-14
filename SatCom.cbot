@@ -1,5 +1,5 @@
 /*
-12 July 2026
+15 July 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -4284,7 +4284,7 @@ public void object::airAttack(object o,float radius)
 		
 		if (enemy != null)
 		{
-			checkSelfStatus(enemy);
+			checkSelfStatus();
 			if (enemy.category == AlienWorm && topo(enemy.position) < 0)
 			{
 				Message("Target is underwater, wait for next target");
@@ -4389,7 +4389,7 @@ public void object::airGuard(object center, float radius)
 			break;
 		}
 		
-		checkSelfStatus(center,radius);
+		checkSelfStatus();
 		
 		if (com.detectedEgg && !com.detectedWasp)
 		{
