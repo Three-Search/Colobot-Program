@@ -390,7 +390,6 @@ public class SatCom
 		ants[nr++] = AlienAnt;
 		ants[nr++] = AlienSpider;
 		ants[nr++] = AlienWorm;
-		ants[nr++] = AlienNest;
 		ants[nr++] = AlienEgg;
 		ants[nr++] = AlienWasp;
 		ants[nr++] = AlienQueen;
@@ -4520,10 +4519,9 @@ public void object::landAttack()
 	
 	antQueen[0] = AlienAnt;
 	antQueen[1] = AlienSpider;
-	antQueen[2] = AlienNest;
-	antQueen[3] = AlienEgg;
-	antQueen[4] = AlienWasp;
-	antQueen[5] = AlienQueen;
+	antQueen[2] = AlienEgg;
+	antQueen[3] = AlienWasp;
+	antQueen[4] = AlienQueen;
 	
 	i = 0;
 	last = this.position;
