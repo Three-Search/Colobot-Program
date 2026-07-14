@@ -181,8 +181,8 @@ public class SatCom
 {
 	static bool staticInited = false;
 	
-	static int returnCode;
-	static string returnMessage;
+	static int returnCode = 0;
+	static string returnMessage = "";
 	static object returnObject;
 	static point returnPoint;
 	
@@ -272,6 +272,7 @@ public class SatCom
 	// 999 = Not initialized
 	static float gridZ[6561];  // Store actual heights
 	static int currentIdx = -1;
+	static int cachedNodes = 0;
 	
 	public void SatCom()
 	{
@@ -956,6 +957,7 @@ public float getNodeZ(int idx)
 	p.x = getNodeX(idx);
 	p.y = getNodeY(idx);
 	com.gridZ[idx] = topo(p);
+	com.cachedNodes = com.cachedNodes + 1;
 	return com.gridZ[idx];
 }
 
@@ -1478,9 +1480,10 @@ public void object::fly(point p)
 	point hit,left,right;
 	object root,o;
 	
-	while (this.altitude < 0.2)
+	if (this.altitude < 0.2)
 	{
 		jet(0.5);
+		wait(0.2);
 	}
 	
 	if (com.detectedGraviPlant)
@@ -1606,7 +1609,7 @@ public void object::fly2p(point p)
 		return;
 	}
 	com.returnMessage = "Flying to target point...";
-	while (dis2d > 5.5)
+	while (dis2d > 5.5 && this.temperature < 0.95)
 	{
 		fly(p);
 		dis2d = distance2d(this.position,p);
@@ -1643,7 +1646,7 @@ public void object::fly(object o)
 	com.returnMessage = category+": fly(object o) start";
 	com.returnCode = 1;
 	int i;
-	if (o == null || o.dead)
+	if (o == null)
 	{
 		com.returnMessage = category+": Object null, could not fly to object";
 		com.returnCode = 1;
@@ -1653,18 +1656,14 @@ public void object::fly(object o)
 	p = o.position;
 	turn(direction(p));
 	jet(1);
-	while (this.position.z < topo(this.position) + 3);
-	{
-		wait(0.01);
-	}
-	
+	wait(0.2);
 	i = 0;
 	last = this.position;
 	while (o != null && distance2d(this.position,p) > 5 && distance2d(this.position,o.position) > 5)
 	{
 		if (this.temperature > com.temperatureThreshold)
 		{
-			gotoSafeLZ(o);
+			gotoSafeLZ();
 		}
 		
 		i++;
@@ -1811,6 +1810,7 @@ public void object::go(point p)
 		wait(1);
 		i++;
 	}
+	errmode(1);
 }
 
 public void object::go(object o)
@@ -2258,7 +2258,7 @@ public void object::repair()
 		if (category == WingedShooter || category == WingedOrgaShooter)
 		{
 			Message("RepairCenter is in use, land and wait for release");
-			gotoSafeLZ(repairCenter);
+			gotoSafeLZ();
 		}
 		else
 		{
@@ -2284,7 +2284,7 @@ public void object::repair()
 		{
 			if (category == WingedShooter || category == WingedOrgaShooter)
 			{
-				gotoSafeLZ(repairCenter);
+				gotoSafeLZ();
 			} 
 		}
 		wait(1);
@@ -2345,7 +2345,7 @@ public void object::chargeCell()
 		if (category == WingedShooter || category == WingedOrgaShooter)
 		{
 			Message("PowerStation is in use, land and wait for release");
-			gotoSafeLZ(powerStation);
+			gotoSafeLZ();
 		}
 		else
 		{
@@ -2371,7 +2371,7 @@ public void object::chargeCell()
 		{
 			if (category == WingedShooter || category == WingedOrgaShooter)
 			{
-				gotoSafeLZ(powerStation);
+				gotoSafeLZ();
 			} 
 		}
 		wait(1);
@@ -3598,8 +3598,6 @@ public point object::sensor(float d, point target)
 
 public void object::moveAndDestroy(object target)
 {
-	errmode(0);
-	
 	SatCom com();
 	
 	object enemies[],o;
@@ -3696,7 +3694,6 @@ public void object::moveAndDestroy(object target)
 
 public void object::aimAndFire(object target)
 {
-	errmode(0);
 	SatCom com();
 	float dir,angle,dis,dif,jetPower;
 	int i;
@@ -3977,6 +3974,7 @@ public void object::checkEnemyWhenInLoop()
 	SatCom com();
 	
 	object enemy = radar(com.ants,0,360,0,com.attackRange);
+	com.returnMessage = "checkEnemyWhenInLoop";
 	if (enemy != null)
 	{
 		if (!checkLOS(enemy.position)) return;
@@ -4231,7 +4229,7 @@ public void object::serviceTowers()
 public void object::attack()
 {
 	SatCom com();
-	
+	errmode(0);
 	if (category == WingedShooter || category == WingedOrgaShooter)
 	{
 		airAttack();
@@ -4240,6 +4238,7 @@ public void object::attack()
 	{
 		landAttack();
 	}
+	errmode(1);
 }
 
 public void object::airAttack()
@@ -4255,7 +4254,6 @@ public void object::airAttack(object o,float radius)
 	point p,last,start,left,right;
 	int i;
 	
-	errmode(0);
 	ipf(10000);
 	
 	center = o;
@@ -4265,6 +4263,8 @@ public void object::airAttack(object o,float radius)
 	last = this.position;
 	while (true)
 	{
+		checkSelfStatus();
+		
 		if (com.detectedEgg && !com.detectedWasp)
 		{
 			if (radar(AlienWasp) != null)
@@ -4284,7 +4284,6 @@ public void object::airAttack(object o,float radius)
 		
 		if (enemy != null)
 		{
-			checkSelfStatus();
 			if (enemy.category == AlienWorm && topo(enemy.position) < 0)
 			{
 				Message("Target is underwater, wait for next target");
@@ -4367,7 +4366,6 @@ public void object::airGuard(object center, float radius)
 	point p,last,start,left,right;
 	int i;
 	
-	errmode(0);
 	ipf(10000);
 	
 	if (center == null)
@@ -4383,13 +4381,13 @@ public void object::airGuard(object center, float radius)
 	last = this.position;
 	while (true)
 	{
+		checkSelfStatus();
+		
 		if (center == null)
 		{
 			attack();
 			break;
 		}
-		
-		checkSelfStatus();
 		
 		if (com.detectedEgg && !com.detectedWasp)
 		{
@@ -4514,8 +4512,6 @@ public void object::landAttack()
 	object o,target,enemies[];
 	int antQueen[];
 	int i;
-	
-	errmode(0);
 	
 	antQueen[0] = AlienAnt;
 	antQueen[1] = AlienSpider;
@@ -4682,8 +4678,6 @@ public void object::landGuard(object center,float radius)
 	point p,last,left,right,front,back;
 	object o,target,enemies[];
 	int i;
-	
-	errmode(0);
 	
 	i = 0;
 	last = this.position;
@@ -4879,7 +4873,6 @@ public void object::landGuard(object center,float radius)
 public void object::PhazerAim(object target)
 {
 	errmode(0);
-	
 	SatCom com();
 	
 	float scanRange = com.safeQueen; // scan for targets within this radius
@@ -5133,12 +5126,11 @@ public void object::PhazerAim(object target)
 			}
 		}
 	}
+	errmode(1);
 }
 
 public void object::LandAim(object target)
 {
-	errmode(0);
-	
 	SatCom com();
 	
 	float scanRange = com.safeAnt; // scan for targets within this radius
@@ -5388,8 +5380,6 @@ public void object::LandAim(object target)
 
 public void object::AirAim(object target)
 {
-	errmode(0);
-	
 	SatCom com();
 	
 	float scanRange = com.safeAnt; // scan for targets within this radius
@@ -5846,4 +5836,12 @@ public void object::escapeMountain(point botPoint, point target)
 			motorPower(dir);
 		}
 	}
+}
+
+public void object::showReturnError()
+{
+	SatCom com();
+	string s = com.returnMessage;
+	int e = com.returnCode;
+	message(s+", errorCode "+e);	
 }
