@@ -271,8 +271,7 @@ public class SatCom
 	// === SINGLE CACHE ARRAY (GENIUS!) ===
 	// 999 = Not initialized
 	static float gridZ[6561];  // Store actual heights
-	static int currentIdx = -1;
-	static int cachedNodes = 0;
+	static int cachedNodes = -1; // not ready to cache
 	
 	public void SatCom()
 	{
@@ -315,6 +314,14 @@ public class SatCom
 		}
 		
 		staticInited = true;
+		
+		// init gridZ
+		gridZ[totalNodes-1] = 999;
+		for (int i = 0; i < totalNodes; i++)
+		{
+			gridZ[i] = 999;
+		}
+		cachedNodes = 0; // ready to cache
 		
 		if (radar(GraviPlant) != null)
 		{
@@ -870,13 +877,6 @@ public class SatCom
 		CATEGORY_NAMES[903] = "ApolloModule";
 		CATEGORY_NAMES[904] = "ApolloAntenna";
 		CATEGORY_NAMES[910] = "Home";
-		
-		gridZ[totalNodes-1] = 999;
-		for (int i = 0; i < totalNodes; i++)
-		{
-			gridZ[i] = 999;
-		}
-		currentIdx = 999;
 	}
 		
 	void initFlatSpacesAroundShip(float flatmin, float radius, int numPoints)
@@ -1435,6 +1435,8 @@ public void object::crawl(point p)
 	
 	dir = direction(p);
 	motor(1 - dir/180,1 + dir/180);
+	
+	cacheGrid(p);
 }
 
 public void object::jetPower(point p)
@@ -1466,6 +1468,25 @@ public void object::motorPower(float direction)
 	motor(speed - turn, speed + turn);
 }
 
+public void object::cacheGrid(point p)
+{
+	SatCom com();
+	
+	if (com.cachedNodes < 0) return; // not ready to cache
+	point m = mid(this.position,p);
+	int idx = getNodeIndex(m);
+	if (com.gridZ[idx] < 999) return; // already cached
+	
+	Message("Caching gridZ "+com.cachedNodes);
+	float z = getNodeZ(idx);
+	for (int d = 0; d < 8; d++)
+	{
+		int nextIndex = getNeighborIndex(idx, d);
+		if (nextIndex == -1) continue;  // Out of bounds
+		z = getNodeZ(nextIndex);
+	}
+}
+
 public void object::fly(point p)
 {
 	SatCom com();
@@ -1483,7 +1504,6 @@ public void object::fly(point p)
 	if (this.altitude < 0.2)
 	{
 		jet(0.5);
-		wait(0.2);
 	}
 	
 	if (com.detectedGraviPlant)
@@ -1554,21 +1574,7 @@ public void object::fly(point p)
 	jetPower(p);
 	motorPower(direction(p));
 	
-	// cache gridZ and landable
-	point m = mid(this.position,p);
-	int idx = getNodeIndex(m);
-	if (com.currentIdx > -1 && idx != com.currentIdx && com.gridZ[idx] == 999)
-	{
-		Message("Caching gridZ...");
-		float z = getNodeZ(idx);
-		for (int d = 0; d < 8; d++)
-		{
-			int nextIndex = getNeighborIndex(idx, d);
-			if (nextIndex == -1) continue;  // Out of bounds
-			z = getNodeZ(nextIndex);
-		}
-		com.currentIdx = idx;
-	}
+	cacheGrid(p);
 }
 
 public void object::fly2p(point p)
@@ -4229,7 +4235,6 @@ public void object::serviceTowers()
 public void object::attack()
 {
 	SatCom com();
-	errmode(0);
 	if (category == WingedShooter || category == WingedOrgaShooter)
 	{
 		airAttack();
@@ -4238,7 +4243,6 @@ public void object::attack()
 	{
 		landAttack();
 	}
-	errmode(1);
 }
 
 public void object::airAttack()
@@ -4248,6 +4252,7 @@ public void object::airAttack()
 
 public void object::airAttack(object o,float radius)
 {
+	errmode(0);
 	SatCom com();
 	object enemy,root,center;
 	float dir,dis2Base,dis2Enemy,detectRange;
@@ -4356,10 +4361,12 @@ public void object::airAttack(object o,float radius)
 	
 	gotoSafeLZ();
 	missionComplete();
+	errmode(1);
 }
 
 public void object::airGuard(object center, float radius)
 {
+	errmode(0);
 	SatCom com();
 	object enemy,root;
 	float dir,dis2Base,dis2Enemy,detectRange;
@@ -4498,10 +4505,12 @@ public void object::airGuard(object center, float radius)
 	
 	landAndRest(start);
 	missionComplete();
+	errmode(0);
 }
 
 public void object::landAttack()
 {
+	errmode(0);
 	SatCom com();
 	
 	float dir,targetOri;
@@ -4602,8 +4611,8 @@ public void object::landAttack()
 				{
 					left = leftPoint(10);
 					right = rightPoint(10);
-					left.z = topo(left);
-					right.z = topo(right);
+					left.z = topo(left)+3;
+					right.z = topo(right)+3;
 					
 					if (checkLOS(left,target.position))
 					{
@@ -4612,17 +4621,6 @@ public void object::landAttack()
 						{
 							continue;
 						}
-						/*
-						Message("No clear view, can not shoot. Crawl to left side of target");
-						turn(75);
-						motor(1,1);
-						wait(0.4);
-						if (!checkLOS(target.position))
-						{
-							turn(direction(target.position));
-							continue;
-						}
-						*/
 					}
 					else if (checkLOS(right,target.position))
 					{
@@ -4631,30 +4629,14 @@ public void object::landAttack()
 						{
 							continue;
 						}
-						/*
-						Message("No clear view, can not shoot. Crawl to right side of target");
-						turn(-75);
-						motor(1,1);
-						wait(0.4);
-						if (!checkLOS(target.position))
-						{
-							turn(direction(target.position));
-							continue;
-						}
-						*/
 					}
 					else
 					{
-						//Message("No clear view, can not shoot. Crawl forward target");
 						continue;
 					}
 				}
 				motor(0,0);
 				aimAndFire(target);
-			}
-			else
-			{
-				aim(0,0);
 			}
 		}
 		else
@@ -4663,13 +4645,15 @@ public void object::landAttack()
 		}
 	}
 	missionComplete();
+	errmode(1);
 }
 
 public void object::landGuard(object center,float radius)
 {
+	errmode(0);
 	SatCom com();
 	
-	float detectRange = com.safeAnt + radius;
+	float detectRange = radius;
 	
 	float dir,targetOri;
 	float dis;
@@ -4751,8 +4735,8 @@ public void object::landGuard(object center,float radius)
 				{
 					left = leftPoint(10);
 					right = rightPoint(10);
-					left.z = topo(left);
-					right.z = topo(right);
+					left.z = topo(left)+3; // gun is about 3 m  height
+					right.z = topo(right)+3;
 					
 					if (checkLOS(left,target.position))
 					{
@@ -4761,17 +4745,6 @@ public void object::landGuard(object center,float radius)
 						{
 							continue;
 						}
-						/*
-						Message("No clear view, can not shoot. Crawl to left side of target");
-						turn(75);
-						motor(1,1);
-						wait(0.4);
-						if (!checkLOS(target.position))
-						{
-							turn(direction(target.position));
-							continue;
-						}
-						*/
 					}
 					else if (checkLOS(right,target.position))
 					{
@@ -4780,94 +4753,27 @@ public void object::landGuard(object center,float radius)
 						{
 							continue;
 						}
-						/*
-						Message("No clear view, can not shoot. Crawl to right side of target");
-						turn(-75);
-						motor(1,1);
-						wait(0.4);
-						if (!checkLOS(target.position))
-						{
-							turn(direction(target.position));
-							continue;
-						}
-						*/
 					}
 					else
 					{
-						//Message("No clear view, can not shoot. Crawl forward target");
 						continue;
 					}
 				}
 				motor(0,0);
 				aimAndFire(target);
 			}
-			else
-			{
-				aim(0,0);
-			}
 		}
 		else
 		{
-			aim(0,0);
-			
-			
+			// if no enenmy in range, follow right side of the guarded object
 			front = aheadPoint(center,radius,0);
 			right = rightPoint(front,center.position);
-			
 			right = space(center.position,15,25,5);
-			
-			go(right);
-			
-			/*
-			while (distance2d(this.position,front) > 5)
-			{
-				o = radar(Any,0,140,1.5,12);
-				if (o == null)
-				{
-					o = radar(Any,0,90,1.5,5);
-				}
-				if (o != null && o.category != center.category && o.category != AlienAnt)
-				{
-					turn(direction(o.position));
-					motor(-1,-1);
-					wait(1);
-					turn(45);
-					motor(1,1);
-					wait(2);
-				}
-				
-				i++;
-				crawl(right);
-				// check if stuck
-				if (distance(this.position,last) <= 0.05)
-				{
-					if (i > 10)
-					{
-						Message("Being stuck at current position, try other way");
-						motor(-1,-1);
-						wait(1);
-						turn(45);
-						motor(1,1);
-						wait(2);
-						i = 0;
-						last = this.position;
-					}
-				}
-				else
-				{
-					i = 0;
-					last = this.position;
-				}
-				
-				if (search(com.ants,center.position,0,detectRange) != null)
-				{
-					break;
-				}
-			}
-			*/
+			crawl(right);
 		}
 	}
 	missionComplete();
+	errmode(1);
 }
 
 public void object::PhazerAim(object target)
