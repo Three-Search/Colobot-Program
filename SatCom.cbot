@@ -5,9 +5,12 @@ ThreeSearch library program for Colobot Gold Edition. This library program is sh
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
 1. Lazy initialization (compute when needed)
 2. Shared caching (all functions use same cache)
-3. Passive preloading (cache during flight)
+3. Passive preloading (cache during bots flight and  bots crawl) 
 4. Progressive speedup (gets faster with use)
 5. Zero upfront cost (no pre-computation)
+
+ThreeSearch Progressive Caching Pattern is a navigation architecture for terrain-based pathfinding that minimizes upfront preprocessing by combining lazy terrain evaluation, shared caching,
+passive cache warming during normal movement, and progressive reuse of terrain knowledge across searches. The pattern is independent of the underlying pathfinding algorithm and can be paired with A*, bidirectional search, LiteRBS, Dijkstra, or other graph-search methods.
 
 Usage:
 
@@ -957,7 +960,7 @@ public float getNodeZ(int idx)
 	p.x = getNodeX(idx);
 	p.y = getNodeY(idx);
 	com.gridZ[idx] = topo(p);
-	com.cachedNodes = com.cachedNodes + 1;
+	com.cachedNodes++;
 	return com.gridZ[idx];
 }
 
@@ -3940,7 +3943,7 @@ public void object::gotoSafeLZ(object o)
 		landingPoint = this.position;
 		landingPoint.z = topo(landingPoint);
 	}
-	Message("Found safe landing point at " + distance2d(this.position,landingPoint) + " m, elapsed time "+(abstime() - t) +" second(s)");
+	com.returnMessage = "Found safe landing point at " + distance2d(this.position,landingPoint) + " m, elapsed time "+(abstime() - t) +" second(s)";
 	landAndRest(landingPoint);
 }
 
@@ -5667,6 +5670,253 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	}
 }
 
+public point[] object::searchEscapeMountainPath_AStar(point botPoint, point target)
+{
+	SatCom com();
+
+	int totalNodes = com.totalNodes;
+	float nodeSpacing = com.nodeSpacing;
+
+	float diagonal = nodeSpacing * sqrt(2.0);
+	float orthogonal = nodeSpacing;
+
+	float moveCosts[] =
+	{
+		diagonal,
+		orthogonal,
+		diagonal,
+		orthogonal,
+		orthogonal,
+		diagonal,
+		orthogonal,
+		diagonal
+	};
+
+	float underwaterPenalty = 5.0;
+
+	bool closed[totalNodes];
+	bool open[totalNodes];
+
+	int parent[totalNodes];
+
+	float g[totalNodes];
+	float h[totalNodes];
+	float f[totalNodes];
+
+	int openList[totalNodes];
+	int openSize = 0;
+
+	float groundLevel = topo(com.spaceShip.position) - 7;
+	float safeFlyingHeight = groundLevel + 10.0;
+
+	int startIndex = getNodeIndex(botPoint);
+	int targetIndex = getNodeIndex(target);
+
+	point startPoint;
+	startPoint.x = getNodeX(startIndex);
+	startPoint.y = getNodeY(startIndex);
+	startPoint.z = getNodeZ(startIndex);
+	plantFlag(startPoint, YellowFlag);
+
+	point targetPoint;
+	targetPoint.x = getNodeX(targetIndex);
+	targetPoint.y = getNodeY(targetIndex);
+	targetPoint.z = getNodeZ(targetIndex);
+	plantFlag(targetPoint, GreenFlag);
+
+	if(startIndex == targetIndex)
+	{
+		point shortPath[2];
+
+		shortPath[0] = botPoint;
+		shortPath[0].z = safeFlyingHeight;
+
+		shortPath[1] = target;
+		shortPath[1].z = safeFlyingHeight;
+
+		return shortPath;
+	}
+
+	for(int i=0;i<totalNodes;i++)
+	{
+		closed[i]=false;
+		open[i]=false;
+
+		parent[i]=-1;
+
+		g[i]=999999.0;
+		h[i]=999999.0;
+		f[i]=999999.0;
+	}
+
+	g[startIndex]=0;
+
+	float dx=getNodeX(startIndex)-getNodeX(targetIndex);
+	float dy=getNodeY(startIndex)-getNodeY(targetIndex);
+
+	h[startIndex]=sqrt(dx*dx+dy*dy);
+
+	f[startIndex]=g[startIndex]+h[startIndex];
+
+	open[startIndex]=true;
+
+	openList[0]=startIndex;
+	openSize=1;
+
+	bool pathFound=false;
+
+	int nodesExplored=0;
+
+	while(openSize>0)
+	{
+		int bestListIndex=-1;
+		int current=-1;
+
+		float lowestF=999999.0;
+
+		for(int i=0;i<openSize;i++)
+		{
+			int idx=openList[i];
+
+			if(f[idx]<lowestF)
+			{
+				lowestF=f[idx];
+				bestListIndex=i;
+				current=idx;
+			}
+		}
+
+		if(current==-1)
+		{
+			break;
+		}
+
+		openList[bestListIndex]=openList[openSize-1];
+		openSize--;
+
+		open[current]=false;
+		closed[current]=true;
+
+		nodesExplored++;
+
+		if(current==targetIndex)
+		{
+			pathFound=true;
+			break;
+		}
+
+		for(int d=0;d<8;d++)
+		{
+			int nextIndex=getNeighborIndex(current,d);
+
+			if(nextIndex==-1)
+			{
+				continue;
+			}
+
+			if(closed[nextIndex])
+			{
+				continue;
+			}
+
+			float nextZ=getNodeZ(nextIndex);
+
+			bool isOpenTerrain=(nextZ < target.z+3 || nextZ < groundLevel+3);
+
+			if(!isOpenTerrain)
+			{
+				continue;
+			}
+
+			float moveCost=moveCosts[d];
+
+			if(nextZ<0)
+			{
+				moveCost+=underwaterPenalty;
+			}
+
+			float tentativeG=g[current]+moveCost;
+
+			if(!open[nextIndex] || tentativeG<g[nextIndex])
+			{
+				parent[nextIndex]=current;
+
+				g[nextIndex]=tentativeG;
+
+				float hx=getNodeX(nextIndex)-getNodeX(targetIndex);
+				float hy=getNodeY(nextIndex)-getNodeY(targetIndex);
+
+				h[nextIndex]=sqrt(hx*hx+hy*hy);
+
+				f[nextIndex]=g[nextIndex]+h[nextIndex];
+
+				if(!open[nextIndex])
+				{
+					open[nextIndex]=true;
+					openList[openSize]=nextIndex;
+					openSize++;
+				}
+			}
+		}
+	}
+	
+	// part 2
+	if(pathFound)
+	{
+		int tempPath[totalNodes];
+		int pathLength = 0;
+
+		int currentNode = targetIndex;
+
+		while(currentNode != -1 && pathLength < totalNodes)
+		{
+			tempPath[pathLength] = currentNode;
+			pathLength++;
+
+			currentNode = parent[currentNode];
+		}
+
+		point result[pathLength];
+
+		int resultIndex = 0;
+
+		for(int i = pathLength - 1; i >= 0; i--)
+		{
+			int idx = tempPath[i];
+
+			result[resultIndex].x = getNodeX(idx);
+			result[resultIndex].y = getNodeY(idx);
+			result[resultIndex].z = getNodeZ(idx);
+
+			plantFlag(result[resultIndex], Target2);
+
+			resultIndex++;
+		}
+
+		Message("A* explored " + nodesExplored +
+		        " nodes, path length: " + pathLength);
+
+		return result;
+	}
+	else
+	{
+		Message("A* could not find path, falling back to direct path");
+
+		point directPath[2];
+
+		directPath[0] = botPoint;
+		directPath[0].z = safeFlyingHeight;
+
+		directPath[1] = target;
+		directPath[1].z =
+			(target.z <= 0.0) ?
+			safeFlyingHeight :
+			target.z + 10.0;
+
+		return directPath;
+	}
+}
+
 public void object::escapeMountain(point botPoint, point target)
 {
 	SatCom com();
@@ -5682,7 +5932,8 @@ public void object::escapeMountain(point botPoint, point target)
 	float dir;
 	float dis;
 	Message("Searching mountain path...");
-	point pathPoints[] = searchEscapeMountainPath(this.position, target);
+	//point pathPoints[] = searchEscapeMountainPath(this.position, target);
+	point pathPoints[] = searchEscapeMountainPath_AStar(this.position, target);
 	int pathLength = sizeof(pathPoints);
 	int i;
 	point p,next;
