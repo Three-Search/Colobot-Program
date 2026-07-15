@@ -1,0 +1,44 @@
+extern void object::LandGuardAndAirAttack()
+{
+	SatCom com();
+	
+	//int bot = LeggedShooter;
+	//int bot = LeggedOrgaShooter;
+	//int bot = WingedShooter;
+	int bot = WingedOrgaShooter;
+	
+	int numBot = 1;
+	
+	if (radar(RepairCenter) == null)
+	{
+		produce(flatSpace(),0,RepairCenter);
+	}
+	
+	while (found(com.ants))
+	{
+		if (!found(bot))
+		{
+			for (int i = 0; i < numBot; i++)
+			{
+				produce(flatSpace(),0,bot,"Shooter.cbot",100);
+			}
+			produce(flatSpace(),0,LeggedOrgaShooter,"Shooter.cbot",100);
+		}
+	}
+	
+}
+
+public void object::Shooter()
+{
+	SatCom com();
+	
+	camerafocus(this);
+	if (category == LeggedOrgaShooter)
+	{
+		landGuard(com.spaceShip,150);
+	}
+	else
+	{
+		attack();
+	}
+}
