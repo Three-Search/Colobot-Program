@@ -274,13 +274,15 @@ public class SatCom
 	// === SINGLE CACHE ARRAY (GENIUS!) ===
 	// 999 = Not initialized
 	static float gridZ[6561];  // Store actual heights
-	static int cachedNodes = -1; // not ready to cache
+	static int cachedNodes; // not ready to cache
 	
 	public void SatCom()
 	{
 		if (staticInited) return;
 		
 		staticInited = true;
+		
+		cachedNodes = -1;  // not ready to cache
 		
 		if (radar(WheeledBuilder) != null)
 		{
@@ -3639,7 +3641,6 @@ public void object::moveAndDestroy(object target)
 	dis = distance2d(this.position,target.position);
 	if (dis > com.attackRange)
 	{
-		// do not check hit mountain and trigger escapeMountain finding if the bot is flying on water
 		if (category == WingedShooter || category == WingedOrgaShooter)
 		{
 			hit = sensor(1.5,target.position);
@@ -3743,6 +3744,7 @@ public void object::aimAndFire(object target)
 	
 	if (category == WheeledShooter || category == TrackedShooter || category == LeggedShooter || category == WheeledOrgaShooter || category == TrackedOrgaShooter || category == LeggedOrgaShooter)
 	{
+		if (!checkLOS(target.position)) return;
 		LandAim(target);
 		return;
 	}
@@ -3752,20 +3754,6 @@ public void object::aimAndFire(object target)
 		AirAim(target);
 		return;
 	}
-}
-
-public void object::aimat(point p)
-{
-	turn(direction(p));
-	float dist=distance2d(p,this.position);
-	float height=this.position.z-p.z;
-	float ipitch=atan2(height,dist);
-	ipitch+=this.pitch; //compensate
-	float iangle=direction(p);
-	//here we rotate ipitch and iangle by roll to compensate for that part of the scheme
-	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
-	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
-	aim(-aimpitch,-aimangle);
 }
 
 public bool object::checkLOS(object target)
@@ -3789,7 +3777,7 @@ public bool object::checkLOS(point bot_position, point ant_position)
 	
 	float total_distance = distance(bot_position, ant_position);
 	
-	if (total_distance < 5)
+	if (total_distance < 2)
 	{
 		return true;
 	}
@@ -3799,7 +3787,7 @@ public bool object::checkLOS(point bot_position, point ant_position)
 	float dy = (ant_position.y - bot_position.y) / total_distance;
 	float dz = (ant_position.z - bot_position.z) / total_distance;
 	float clearance = (category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 0.5 : 0.2;
-	float end = total_distance - ((category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 4.0 : 2.0);
+	float end = total_distance - ((category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 2.0 : 1.0);
 	if (end < 2)
 	{
 		return true;
@@ -4596,14 +4584,29 @@ public void object::landAttack()
 			{
 				if (i > 10 || this.pitch > 60)
 				{
-					Message("Being stuck at current position, try other way");
-					motor(-1,-1);
-					wait(1);
-					turn(45);
-					motor(1,1);
-					wait(2);
-					i = 0;
-					last = this.position;
+					if (distance2Ants(this.position) > com.safeAnt)
+					{
+						Message("Being stuck at current position, searching for path...");
+						while (this.pitch > 10)
+						{
+							motor(-1,-1);
+						}
+						motor(0,0);
+						escapeMountain(this.position,target.position);
+						i = 0;
+						last = this.position;
+					}
+					else
+					{
+						Message("Being stuck at current position, try other way");
+						motor(-1,-1);
+						wait(1);
+						turn(60);
+						motor(1,1);
+						wait(1);
+						i = 0;
+						last = this.position;
+					}
 				}
 			}
 			else
@@ -4628,8 +4631,6 @@ public void object::landAttack()
 			}
 			
 			dis = distance2d(this.position,target.position);
-			
-			//if (dis <= com.attackRange && -21 < angle && angle < 21)
 			if ((dis <= com.attackRange) || (this.category == PhazerShooter && dis <= com.phazerAttackRange))
 			{
 				if (!checkLOS(target.position))
@@ -5068,7 +5069,7 @@ public void object::LandAim(object target)
 	
 	// Platform specific parameters
 	float minAngle = -20; // minimum gun elevation relative to platform
-	float maxAngle = 20; // maximum gun elevation relative to platform
+	float maxAngle = 45; // maximum gun elevation relative to platform
 	float weaponHeight = 1.5; // height of weapon above platform
 	float weaponOffset = 1.5; // weapon is this amount in front of platform
 	float maxTurnRate = 54; // maximum turn rate
@@ -5115,6 +5116,8 @@ public void object::LandAim(object target)
 	
 	if (target != null && target.category != AlienEgg)
 	{
+		if (!checkLOS(target.position)) return;
+		
 		// Initialize the old variables
 		oldBearing = orientation + direction(target.position);
 		oldRange = distance2d(position, target.position);
@@ -5124,10 +5127,10 @@ public void object::LandAim(object target)
 		it = oldRange / v0; // initial estimate for intercept time
 		fireTime = abstime() + 0.2; // don't fire for 0.5 seconds (first track target)
 		
-		while (true) 
+		while (true)
 		{
 			current = radar(com.enemies,0,360,0,scanRange);
-			if (target == null || target.dead || current == null || target != current)
+			if (this.shieldLevel < com.shieldThreshold || target == null || target.dead || current == null || target != current)
 			{
 				return;
 			}
@@ -5173,8 +5176,10 @@ public void object::LandAim(object target)
 			{
 				azimuth -= 360;
 			}
-			zt = height + t * deltaHeight - cos(pitch) * cos(roll) * weaponHeight; // intercept height
-			rt = range + t * deltaRange - weaponOffset * cos(azimuth) * cos(pitch); // intercept range
+			//zt = height + t * deltaHeight - cos(pitch) * cos(roll) * weaponHeight; // intercept height
+			//rt = range + t * deltaRange - weaponOffset * cos(azimuth) * cos(pitch); // intercept range
+			zt = height + t * deltaHeight - (cos(pitch) * cos(roll) * weaponHeight + sin(pitch) * weaponOffset);   // weaponHeight + cross-term
+			rt = range + t * deltaRange - (weaponOffset * cos(azimuth) * cos(pitch) - sin(pitch) * weaponHeight);  // weaponOffset + cross-term
 			if (rt < 0.001)
 			{
 				rt = 0.001;
@@ -5360,6 +5365,20 @@ public void object::AirAim(object target)
 	}
 }
 
+public void object::aimat(point p)
+{
+	turn(direction(p));
+	float dist=distance2d(p,this.position);
+	float height=this.position.z-p.z;
+	float ipitch=atan2(height,dist);
+	ipitch+=this.pitch; //compensate
+	float iangle=direction(p);
+	//here we rotate ipitch and iangle by roll to compensate for that part of the scheme
+	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
+	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
+	aim(-aimpitch,-aimangle);
+}
+
 public point[] object::searchEscapeMountainPath(point botPoint, point target)
 {
 	SatCom com();
@@ -5516,8 +5535,14 @@ public void object::escapeMountain(point botPoint, point target)
 	float ground = topo(com.spaceShip.position) - 7;
 	object enemy;
 	
+	if (this.category == LeggedShooter || this.category == LeggedOrgaShooter)
+	{
+		point p = searchSafeLZ(this.position);
+		go(p);
+	}
 	gotoSafeLZ();
 	jet(-0.01);
+	turn(direction(target));
 	motor(0,0);
 	float t = abstime();
 	float dir;
@@ -5553,7 +5578,7 @@ public void object::escapeMountain(point botPoint, point target)
 		}
 		while (distance2d(this.position,p) > 5 && distance2d(this.position,p) < distance2d(this.position,next))
 		{
-			object enemy = radar(com.ants,0,360,0,com.attackRange);
+			enemy = radar(com.ants,0,360,0,com.attackRange);
 			if (enemy != null)
 			{
 				if (checkLOS(enemy.position))
@@ -5576,6 +5601,15 @@ public void object::escapeMountain(point botPoint, point target)
 			jet(1);
 			dir = direction(p);
 			motorPower(dir);
+			if ((this.category == LeggedShooter || this.category == LeggedOrgaShooter) && this.pitch > 60)
+			{
+				Message("Being stuck at current position, try other way");
+				motor(-1,-1);
+				wait(1);
+				turn(45);
+				motor(1,1);
+				wait(2);
+			}
 		}
 	}
 }
