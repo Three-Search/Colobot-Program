@@ -278,6 +278,10 @@ public class SatCom
 	
 	public void SatCom()
 	{
+		if (staticInited) return;
+		
+		staticInited = true;
+		
 		if (radar(WheeledBuilder) != null)
 		{
 			builderBotCategory = WheeledBuilder;
@@ -294,29 +298,6 @@ public class SatCom
 		{
 			builderBotCategory = LeggedBuilder;
 		}
-		
-		if (staticInited)
-		{
-			/*
-			me = radar(Me);
-			spaceShip = radar(SpaceShip);
-			botFactory = radar(BotFactory);
-			researchCenter = radar(ResearchCenter);
-			repairCenter = radar(RepairCenter);
-			radarStation = radar(RadarStation);
-			exchangePost = radar(ExchangePost);
-			defenseTower = radar(DefenseTower);
-			autoLab = radar(AutoLab);
-			powerStation = radar(PowerStation);
-			powerPlant = radar(PowerPlant);
-			nuclearPlant = radar(NuclearPlant);
-			converter = radar(Converter);
-			powerCaptor = radar(PowerCaptor);
-			*/
-			return;
-		}
-		
-		staticInited = true;
 		
 		if (radar(GraviPlant) != null)
 		{
@@ -630,12 +611,12 @@ public class SatCom
 		RADII[505] = 00.00; //Alien Worm
 		
 		RADII[600] = 03.00; //A Wreckage wild card! for Recyclables
-		RADII[600] = 02.00; //Wreckage; Whelled Grabber, Recyclable
+		RADII[600] = 02.00; //Wreckage; Wheeled Grabber, Recyclable
 		RADII[601] = 02.00; //Wreckage; Sunken Whelled Grabber, Recyclable
 		RADII[602] = 03.00; //Wreckage; Tracked Shooter, Recyclable
 		RADII[603] = 03.00; //Wreckage; Sunken Tracked Shooter, Recyclable
-		RADII[603] = 02.50; //Wreckage; Sunken Recyceler, Recyclable
-		RADII[605] = 02.50; //Wreckage; Recyceler, Recyclable
+		RADII[603] = 02.50; //Wreckage; Sunken Recycler, Recyclable
+		RADII[605] = 02.50; //Wreckage; Recycler, Recyclable
 		
 		RADII[606] = 06.00; //Ruin; Bot Factory
 		RADII[607] = 02.25; //Ruin; Ore Converter Door
@@ -962,6 +943,16 @@ public float getNodeZ(int idx)
 	com.gridZ[idx] = topo(p);
 	com.cachedNodes++;
 	return com.gridZ[idx];
+}
+
+// Helper: get world point from index
+public point getNodePoint(int idx)
+{
+	point p;
+	p.x = getNodeX(idx);
+	p.y = getNodeY(idx);
+	p.z = getNodeZ(idx);
+	return p;
 }
 
 // Helper: get index from world point
@@ -1475,7 +1466,6 @@ public void object::cacheGrid(point p)
 {
 	SatCom com();
 	
-	if (com.cachedNodes < 0) return; // not ready to cache
 	point m = mid(this.position,p);
 	int idx = getNodeIndex(m);
 	if (com.gridZ[idx] < 999) return; // already cached
@@ -3684,16 +3674,42 @@ public void object::moveAndDestroy(object target)
 					break;
 				}
 			}
-			if (los)
+			if (category == WingedShooter || category == WingedOrgaShooter)
 			{
-				gotoSafeLZ();
-				return;
+				if (los)
+				{
+					// Found new position with LOS, fly to that position and continue attack
+					fly2p(p);
+				}
+				else
+				{
+					// Could not find new position with LOS, fly to side with lower topo and return to try again. 
+					if (topo(left) < topo(right))
+					{
+						Message("No LOS, fly to left side");
+						fly2p(left);
+					}
+					else
+					{
+						Message("No LOS, fly to right side");
+						fly2p(right);
+					}
+					return;
+				}
 			}
 			else
 			{
-				Message("No LOS, draw back");
-				gotoSafeLZ();
-				return;
+				if (los)
+				{
+					// Found new position with LOS,  crawl to that position and continue attack
+					go(p);
+				}
+				else
+				{
+					// Could not find new position with LOS, crawl direct to target and return to try again
+					crawl(target.position);
+					return;
+				}
 			}
 		}
 		motor(0,0);
@@ -3773,7 +3789,7 @@ public bool object::checkLOS(point bot_position, point ant_position)
 	
 	float total_distance = distance(bot_position, ant_position);
 	
-	if (total_distance < 10)
+	if (total_distance < 5)
 	{
 		return true;
 	}
@@ -3987,7 +4003,7 @@ public void object::checkEnemyWhenInLoop()
 	if (enemy != null)
 	{
 		if (!checkLOS(enemy.position)) return;
-		Message("Enemy detected in attack range! Attacking...");
+		Message("Enemy detected! Attacking...");
 		float dir = direction(enemy.position);
 		// Normalize the angle
 		if (dir > 180)
@@ -4238,6 +4254,12 @@ public void object::serviceTowers()
 public void object::attack()
 {
 	SatCom com();
+	
+	while (com.cachedNodes < 0)
+	{
+		wait(0.2);
+	}
+	
 	if (category == WingedShooter || category == WingedOrgaShooter)
 	{
 		airAttack();
@@ -5341,7 +5363,7 @@ public void object::AirAim(object target)
 public point[] object::searchEscapeMountainPath(point botPoint, point target)
 {
 	SatCom com();
-	int totalNodes = com.totalNodes; // 6561
+	int totalNodes = com.totalNodes;
 	
 	float groundLevel = topo(com.spaceShip.position) - 7;
 	float safeFlyingHeight = groundLevel + 10.0;
@@ -5364,13 +5386,13 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	}
 	
 	// ---------- SIMPLE A* DATA ----------
-	int visited[6561];
-	int parent[6561];
-	int gCost[6561];
-	int fCost[6561];
-	int openList[6561];
+	int visited[totalNodes];
+	int parent[totalNodes];
+	int gCost[totalNodes];
+	int fCost[totalNodes];
+	int openList[totalNodes];
 	int openSize = 0;
-	int inOpen[6561];
+	int inOpen[totalNodes];
 	
 	for (int i = 0; i < totalNodes; i++)
 	{
@@ -5464,10 +5486,10 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 		return directPath;
 	}
 	
-	int tempPath[6561];
+	int tempPath[totalNodes];
 	int pathLen = 0;
 	int current = meetNode;
-	while (current != -1 && pathLen < 6561)
+	while (current != -1 && pathLen < totalNodes)
 	{
 		tempPath[pathLen] = current;
 		pathLen = pathLen + 1;
@@ -5478,9 +5500,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	for (int i = 0; i < pathLen; i = i + 1)
 	{
 		int idx = tempPath[pathLen - 1 - i];
-		result[i].x = getNodeX(idx);
-		result[i].y = getNodeY(idx);
-		result[i].z = getNodeZ(idx);
+		result[i] = getNodePoint(idx);
 		plantFlag(result[i], Target2);
 	}
 	
@@ -5502,7 +5522,7 @@ public void object::escapeMountain(point botPoint, point target)
 	float t = abstime();
 	float dir;
 	float dis;
-	Message("Searching path...");
+	Message("Searching for path...");
 	point pathPoints[] = searchEscapeMountainPath(this.position, target);
 	int pathLength = sizeof(pathPoints);
 	int i;
@@ -5512,7 +5532,7 @@ public void object::escapeMountain(point botPoint, point target)
 		gotoSafeLZ();
 		return;
 	}
-	Message("Found path after " + (abstime()-t) + " second(s). Following the guide path...");
+	Message("Path found in " + (abstime()-t) + " second(s), switch to guided mode");
 	for (i = 1; i < pathLength; i++)
 	{
 		p = pathPoints[i];
@@ -5528,16 +5548,16 @@ public void object::escapeMountain(point botPoint, point target)
 		dis = distance2d(this.position,target);
 		if (checkLOS(target) && dis > com.safeAnt)
 		{
-			Message("LOS to target clear, exit following path mode");
+			Message("Line of sight clear, switch to combat mode");
 			return;
 		}
 		while (distance2d(this.position,p) > 5 && distance2d(this.position,p) < distance2d(this.position,next))
 		{
-			if (distance2d(this.position,target) <= com.attackRange)
+			object enemy = radar(com.ants,0,360,0,com.attackRange);
+			if (enemy != null)
 			{
-				if (checkLOS(target))
+				if (checkLOS(enemy.position))
 				{
-					Message("Enemy is within attack range while following the path, exit following path mode");
 					checkEnemyWhenInLoop();
 					return;
 				}
@@ -5545,32 +5565,17 @@ public void object::escapeMountain(point botPoint, point target)
 			
 			if (this.temperature > com.temperatureThreshold)
 			{
-				Message("Engine temperature is too high, exit following path mode and goto safe landing point");
+				Message("Engine temperature is too high, goto safe landing zone");
 				gotoSafeLZ();
-				if (pathLength < 30)
+				if (pathLength < 20)
 				{
 					return;
 				}
 			}
 			
-			float dif; // difference in altitude of point p & bot (relative to sea-level)
-			float ang; // flying angle must be -20 degrees favorable
-			dis = distance(this.position,p);
-			if (dis < 0.01) dis = 0.01;
-			dif = p.z-this.position.z;
-			ang = asin(dif/dis);
 			jet(1);
 			dir = direction(p);
-			//motor(1-dir/22.5,1+dir/22.5);
 			motorPower(dir);
 		}
 	}
-}
-
-public void object::showReturnError()
-{
-	SatCom com();
-	string s = com.returnMessage;
-	int e = com.returnCode;
-	message(s+", errorCode "+e);	
 }
