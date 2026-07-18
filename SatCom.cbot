@@ -1,5 +1,5 @@
 /*
-15 July 2026
+18 July 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -275,6 +275,11 @@ public class SatCom
 	// 999 = Not initialized
 	static float gridZ[6561];  // Store actual heights
 	static int cachedNodes; // not ready to cache
+	
+	static string debugBuffer[100];
+	static int debugIndex = 0;
+	static int debugCount = 0;  // Total messages stored (for tracking)
+	bool debug = false; // to control store debug or not
 	
 	public void SatCom()
 	{
@@ -1509,7 +1514,7 @@ public void object::fly(point p)
 			dir = direction(root.position);
 			if (distance2d(this.position,root.position) <= com.safeRoot && -60 < dir && dir < 60)
 			{
-				checkEnemyWhenInLoop();
+				checkEnemyThreat();
 				dir = direction(root.position);
 				if (dir >= 0)
 				{
@@ -1674,14 +1679,7 @@ public void object::fly(object o)
 			if (i > 10)
 			{
 				Message("Avoiding obstacle");
-				motor(0,0);
-				jet(1);
-				wait(1);
-				motor(-1,-1);
-				wait(1);
-				turn(45);
-				motor(1,1);
-				wait(1);
+				avoidStuck();
 				i = 0;
 				last = this.position;
 			}
@@ -1789,6 +1787,21 @@ public object[] object::RadarAll(int c)
 		}
 	}
 	return o;
+}
+
+public void object::avoidStuck()
+{
+	errmode(0);
+	checkEnemyThreat();
+	motor(-1,-1);
+	wait(1);
+	checkEnemyThreat();
+	turn(60);
+	checkEnemyThreat();
+	motor(1,1);
+	wait(2);
+	checkEnemyThreat();
+	errmode(1);
 }
 
 public void object::go(point p)
@@ -3780,18 +3793,18 @@ public bool object::checkLOS(point bot_position, point ant_position)
 	float dx = (ant_position.x - bot_position.x) / total_distance;
 	float dy = (ant_position.y - bot_position.y) / total_distance;
 	float dz = (ant_position.z - bot_position.z) / total_distance;
-	float clearance = (category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 0.5 : 0.2;
-	//float end = total_distance - ((category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 2.0 : 1.0);
-	float end = total_distance;
-	//if (end < 2)
-	//{
-	//	return true;
-	//}
+	float clearance = ((category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 0.8 : 0.4);
+	float end = total_distance - ((category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 2.0 : 1.0);
+	if (end < 2)
+	{
+		return true;
+	}
 	
 	point p;
 	
 	// Loop through every 0.5 meter from bot position to ant position
-	for (float t = 2.0; t < end; t += 0.5)
+	//for (float t = 2.0; t < end; t += 0.5)
+	for (float t = 2.0; t < end; t += 1)
 	{
 		p.x = bot_position.x + dx * t;
 		p.y = bot_position.y + dy * t;
@@ -3977,12 +3990,12 @@ public float object::speed(point p)
 	return speed;
 }
 
-public void object::checkEnemyWhenInLoop()
+public void object::checkEnemyThreat()
 {
 	SatCom com();
 	
 	object enemy = radar(com.ants,0,360,0,com.attackRange);
-	com.returnMessage = "checkEnemyWhenInLoop";
+	com.returnMessage = "checkEnemyThreat";
 	if (enemy != null)
 	{
 		if (!checkLOS(enemy.position)) return;
@@ -4037,7 +4050,7 @@ public void object::landAndRest(point p)
 				motor(speed(left),speed(right));
 			}
 		}
-		checkEnemyWhenInLoop();
+		checkEnemyThreat();
 	}
 }
 
@@ -4343,14 +4356,7 @@ public void object::airAttack(object o,float radius)
 				if (i > 10)
 				{
 					Message("Avoiding obstacle");
-					motor(0,0);
-					jet(1);
-					wait(1);
-					motor(-1,-1);
-					wait(1);
-					turn(45);
-					motor(1,1);
-					wait(1);
+					avoidStuck();
 					i = 0;
 					last = this.position;
 				}
@@ -4463,14 +4469,7 @@ public void object::airGuard(object center, float radius)
 				if (i > 10)
 				{
 					Message("Avoiding obstacle");
-					motor(0,0);
-					jet(1);
-					wait(1);
-					motor(-1,-1);
-					wait(1);
-					turn(45);
-					motor(1,1);
-					wait(1);
+					avoidStuck();
 					i = 0;
 					last = this.position;
 				}
@@ -4547,11 +4546,7 @@ public void object::landAttack()
 		if (o != null && o.category != target.category && distance2d(this.position,target.position) > com.safeAnt)
 		{
 			turn(direction(o.position));
-			motor(-1,-1);
-			wait(1);
-			turn(45);
-			motor(1,1);
-			wait(2);
+			avoidStuck();
 		}
 			
 		i++;
@@ -4572,11 +4567,7 @@ public void object::landAttack()
 				else
 				{
 					Message("Being stuck at current position, try other way");
-					motor(-1,-1);
-					wait(1);
-					turn(60);
-					motor(1,1);
-					wait(1);
+					avoidStuck();
 					i = 0;
 					last = this.position;
 				}
@@ -4591,7 +4582,6 @@ public void object::landAttack()
 		dis = distance2d(this.position,target.position);
 		if ((dis <= com.attackRange) || (this.category == PhazerShooter && dis <= com.phazerAttackRange))
 		{
-			if (this.category != PhazerShooter && !checkLOS(target.position)) continue;
 			motor(0,0);
 			aimAndFire(target);
 		}
@@ -4640,11 +4630,7 @@ public void object::landGuard(object center,float radius)
 			if (o != null && o.category != target.category && o.category != center.category && distance2d(this.position,target.position) > com.safeAnt)
 			{
 				turn(direction(o.position));
-				motor(-1,-1);
-				wait(1);
-				turn(45);
-				motor(1,1);
-				wait(2);
+				avoidStuck();
 			}
 			
 			i++;
@@ -4655,11 +4641,7 @@ public void object::landGuard(object center,float radius)
 				if (i > 10)
 				{
 					Message("Being stuck at current position, try other way");
-					motor(-1,-1);
-					wait(1);
-					turn(45);
-					motor(1,1);
-					wait(2);
+					avoidStuck();
 					i = 0;
 					last = this.position;
 				}
@@ -4981,16 +4963,17 @@ public void object::PhazerAim(object target)
 
 public void object::LandAim(object target)
 {
-	errmode(0);
 	SatCom com();
+	
+	if (target == null || target.dead) return;
 	
 	float scanRange = com.attackRange; // scan for targets within this radius
 	
 	// Platform specific parameters
-	float minAngle = -20; // minimum gun elevation relative to platform
+	float minAngle = -20; // minimum gun elevation relative to platform, bot can elevate gun from -20 to 20
 	float maxAngle = 20; // maximum gun elevation relative to platform
-	float weaponHeight = (this.category == LeggedOrgaShooter ? 2.0 : 1.5); // height of weapon above platform
-	float weaponOffset = (this.category == LeggedOrgaShooter ? 2.0 : 1.5); // weapon is this amount in front of platform
+	float weaponHeight = (this.category == LeggedOrgaShooter || this.category == WingedOrgaShooter ? 2.0 : 1.5); // height of weapon above platform
+	float weaponOffset = (this.category == LeggedOrgaShooter || this.category == WingedOrgaShooter ? 2.0 : 1.5); // weapon is this amount in front of platform
 	float maxTurnRate = 54; // maximum turn rate
 	
 	// Ballistic parameters
@@ -5033,7 +5016,9 @@ public void object::LandAim(object target)
 	
 	object current;
 	
-	if (target == null || target.dead) return;
+	float elapsedTime;
+	
+	errmode(0);
 	
 	// Initialize the old variables
 	oldBearing = this.orientation + direction(target.position);
@@ -5043,13 +5028,41 @@ public void object::LandAim(object target)
 	
 	it = oldRange / v0; // initial estimate for intercept time
 	fireTime = abstime() + 0.2; // don't fire for 0.5 seconds (first track target)
-	
+	elapsedTime = abstime() + 10; // only track maximun 10 seconds
 	while (true)
 	{
-		// check if other enemy came closer than target
-		current = radar(com.ants,0,360,0,com.attackRange);
-		if (target == null || current == null || current != target)
+		if (elapsedTime < abstime())
 		{
+			Message("Target keeps hiding behind mountain. Stop tracking and try other position");
+			StoreDebug("Target keeps hiding behind mountain. Stop tracking and try other position");
+			avoidStuck();
+			errmode(1);
+			return;		
+		}
+		
+		if (target == null || target.dead)
+		{
+			errmode(1);
+			return;
+		}
+		
+		current = radar(com.ants,0,360,0,scanRange);
+		if (current == null)
+		{
+			errmode(1);
+			return;
+		}
+		
+		// check if any other enemy came closer than target
+		if (current != target)
+		{
+			if (checkLOS(current.position))
+			{
+				aimat(current.position);
+				fire(0.2);
+				StoreDebug("Fired new enemy with emergency aim");
+			}
+			errmode(1);
 			return;
 		}
 		
@@ -5058,9 +5071,6 @@ public void object::LandAim(object target)
 		range = distance2d(this.position, target.position);
 		height = target.position.z - this.position.z;
 		time = abstime();
-		
-		// check if target run away
-		if (range > com.attackRange) return;
 		
 		// Calculate differences
 		deltaBearing = bearing - oldBearing;
@@ -5221,30 +5231,33 @@ public void object::LandAim(object target)
 		}
 		motor(-motorOutput, motorOutput); // apply turn rate
 		
-		// Fire if target is within weapon envelope
-		if (a > minAngle && a < maxAngle && azimuth > -2 && azimuth < 2 && fireTime < abstime())
+		// check LOS before fire, if no LOS keep tracking target movements
+		if (!checkLOS(target.position)) continue;
+		
+		// Fired with advanced aim if target is within weapon envelope
+		if (range <= 20 || (a >= minAngle && a <= maxAngle && azimuth >= -2 && azimuth <= 2 && fireTime < abstime()))
 		{
 			if (target != null && !target.dead)
 			{
 				fire(0.2);
 				fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-				Message("Fired with advance aim");
-				//Message("Firing at range " + dis + " m.");
+				StoreDebug("LandAim Fired target with advanced aim: a " + a + ", azimuth " + azimuth + ", fireTime " + fireTime + ", range " + range);
 			}
 		}
-		else if (range <= 15)
+		else
 		{
-			aimat(target.position);
-			if (target != null && !target.dead)
+			if (fireTime < abstime())
 			{
-				fire(0.2);
-				fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-				Message("Fired with normal aim");
-				//Message("Firing at range " + dis + " m.");
+				if (target != null && !target.dead)
+				{
+					aimat(target.position);
+					fire(0.2);
+					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
+					StoreDebug("LandAim Fired target with emergency aim: a " + a + ", azimuth " + azimuth + ", fireTime " + fireTime + ", range " + range);
+				}
 			}
-		}		
+		}
 	}
-	errmode(1);
 }
 
 public void object::AirAim(object target)
@@ -5516,7 +5529,7 @@ public void object::escapeMountain(point botPoint, point target)
 			{
 				if (checkLOS(enemy.position))
 				{
-					checkEnemyWhenInLoop();
+					checkEnemyThreat();
 					return;
 				}
 			}
@@ -5537,12 +5550,80 @@ public void object::escapeMountain(point botPoint, point target)
 			if ((this.category == LeggedShooter || this.category == LeggedOrgaShooter) && this.pitch > 60)
 			{
 				Message("Being stuck at current position, try other way");
-				motor(-1,-1);
-				wait(1);
-				turn(45);
-				motor(1,1);
-				wait(2);
+				avoidStuck();
 			}
 		}
 	}
 }
+
+public void object::ClearDebug()
+{
+	SatCom com();
+	
+	for (int i = 0; i < 100; i++)
+	{
+		com.debugBuffer[i] = "";
+	}
+	com.debugIndex = 0;
+	com.debugCount = 0;
+}
+
+public void object::StoreDebug(string msg)
+{
+	SatCom com();
+	
+	if (!com.debug) return;
+	
+	com.returnMessage = category + ": Timestamp " + abstime() + " " + msg;
+	com.debugBuffer[com.debugIndex] = com.returnMessage;
+	com.debugIndex = (com.debugIndex + 1) % 100;
+	if (com.debugCount < 100)
+	{
+		com.debugCount = com.debugCount + 1;
+	}
+}
+
+public void object::PrintDebug()
+{
+	SatCom com();
+	
+	if (com.debugCount == 0)
+	{
+		message("(Empty)");
+		return;
+	}
+	
+	string filename =  "debug.txt";
+	file handle();
+	handle.open(filename, "w");
+	
+	handle.writeln("=== DEBUG BUFFER (" + com.debugCount + " messages) ===");
+	handle.writeln("Timestamp: " + abstime());
+	handle.writeln("");
+	
+	// Print from oldest to newest
+	int startIndex;
+	if (com.debugCount < 100)
+	{
+		startIndex = 0;
+	}
+	else
+	{
+		startIndex = com.debugIndex;
+	}
+	
+	for (int i = 0; i < com.debugCount; i++)
+	{
+		int idx = (startIndex + i) % 100;
+		if (com.debugBuffer[idx] != "")
+		{
+			handle.writeln(com.debugBuffer[idx]);
+		}
+	}
+	
+	handle.writeln("");
+	handle.writeln("=== END DEBUG BUFFER ===");
+	handle.close();
+	message("Debug buffer written to: files/" + filename);
+}
+
