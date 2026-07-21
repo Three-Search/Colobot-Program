@@ -8,10 +8,6 @@ extern void object::SpeedAttack()
 	int bot = WingedOrgaShooter;
 	int numBot = 1;
 	
-	while (com.currentIdx < 0)
-	{
-		wait(0.2);
-	}
 	if (radar(RepairCenter) == null)
 	{
 		produce(flatSpace(),0,RepairCenter);
