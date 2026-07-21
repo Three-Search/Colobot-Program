@@ -1,5 +1,5 @@
 /*
-18 July 2026
+22 July 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -243,6 +243,7 @@ public class SatCom
 	static float sqrt3 = 1.73205;
 	static float sqrt2 = 1.41421;
 	static float PI = 3.1416;
+	static int sign = 1; // this is used to time with -1 to have alternative signs of -1 and 1
 	
 	static object me;
 	static object spaceShip;
@@ -279,7 +280,7 @@ public class SatCom
 	static string debugBuffer[100];
 	static int debugIndex = 0;
 	static int debugCount = 0;  // Total messages stored (for tracking)
-	bool debug = false; // to control store debug or not
+	static bool debug = false; // to control store debug or not
 	
 	public void SatCom()
 	{
@@ -948,7 +949,6 @@ public float getNodeZ(int idx)
 	p.x = getNodeX(idx);
 	p.y = getNodeY(idx);
 	com.gridZ[idx] = topo(p);
-	com.cachedNodes++;
 	return com.gridZ[idx];
 }
 
@@ -1432,12 +1432,12 @@ public void object::crawl(point p)
 			wait(0.2);
 			return;
 		}
+		cacheGrid();
 	}
 	
 	dir = direction(p);
 	motor(1 - dir/180,1 + dir/180);
-	
-	cacheGrid(p);
+	cacheGrid();
 }
 
 public void object::jetPower(point p)
@@ -1469,7 +1469,83 @@ public void object::motorPower(float direction)
 	motor(speed - turn, speed + turn);
 }
 
-public void object::cacheGrid(point p)
+public int getSpiralNode(int n)
+{
+	SatCom com();
+	int gridSize = com.gridSize;
+	int cx = 40;
+	int cy = 40;
+	
+	// n = 0 center
+	if (n == 0)
+	{
+		return cy * gridSize + cx;
+	}
+	
+	// Find ring
+	float sqrt_n = sqrt(n);
+	int ring = (sqrt_n - 1) / 2 + 1;
+	
+	// Nodes before this ring
+	int nodesBefore = 1 + 4 * (ring - 1) * ring;
+	int pos = n - nodesBefore;  // 0 to 8*ring - 1
+	
+	int x, y;
+	
+	// Walk clockwise around the ring
+	// Each ring has 8*ring nodes
+	if (pos < 2 * ring)
+	{
+		// Top side: left to right (including corners)
+		x = cx - ring + pos;
+		y = cy - ring;
+	}
+	else if (pos < 4 * ring)
+	{
+		// Right side: top to bottom (excluding top corner)
+		x = cx + ring;
+		y = cy - ring + (pos - 2 * ring);
+	}
+	else if (pos < 6 * ring)
+	{
+		// Bottom side: right to left (excluding right corner)
+		x = cx + ring - (pos - 4 * ring);
+		y = cy + ring;
+	}
+	else
+	{
+		// Left side: bottom to top (excluding bottom corner)
+		x = cx - ring;
+		y = cy + ring - (pos - 6 * ring);
+	}
+	
+	// Check bounds
+	if (x < 0 || x >= gridSize || y < 0 || y >= gridSize)
+	{
+		return -1;
+	}
+	
+	return y * gridSize + x;
+}
+
+public void object::cacheGrid()
+{
+	SatCom com();
+	
+	if (com.cachedNodes >= com.totalNodes) return;
+	
+	// Get next node in the spiral
+	int idx = getSpiralNode(com.cachedNodes);
+	
+	if (idx != -1)
+	{
+		//Message("Caching gridZ "+com.cachedNodes);	
+		float z = getNodeZ(idx);  // Cache this node
+		com.cachedNodes++;
+	}	
+}
+
+public void object::cacheGrid_old(point p)
 {
 	SatCom com();
 	
@@ -1574,7 +1650,7 @@ public void object::fly(point p)
 	jetPower(p);
 	motorPower(direction(p));
 	
-	cacheGrid(p);
+	cacheGrid();
 }
 
 public void object::fly2p(point p)
@@ -1791,12 +1867,14 @@ public object[] object::RadarAll(int c)
 
 public void object::avoidStuck()
 {
+	SatCom com();
+	com.sign = (rand() < 0.5) ? -1 : 1;
 	errmode(0);
 	checkEnemyThreat();
 	motor(-1,-1);
 	wait(1);
 	checkEnemyThreat();
-	turn(60);
+	turn(60*com.sign);
 	checkEnemyThreat();
 	motor(1,1);
 	wait(2);
@@ -3606,6 +3684,7 @@ public point object::sensor(float d, point target)
 			hit = p;
 			break;
 		}
+		cacheGrid();
 	}
 	return hit;
 }
@@ -4556,7 +4635,7 @@ public void object::landAttack()
 		{
 			if (i > 10 || this.pitch > 60)
 			{
-				if (distance(this.position,target.position) > com.safeAnt)
+				if (distance(this.position,target.position) > com.safeAnt || target.position.z - this.position.z > 10)
 				{
 					Message("Being stuck at current position, searching for path...");
 					escapeMountain(this.position,target.position);
@@ -5028,22 +5107,38 @@ public void object::LandAim(object target)
 	
 	it = oldRange / v0; // initial estimate for intercept time
 	fireTime = abstime() + 0.2; // don't fire for 0.5 seconds (first track target)
-	elapsedTime = abstime() + 10; // only track maximun 10 seconds
+	elapsedTime = abstime() + 5; // only track maximun 5 seconds
 	while (true)
-	{
-		if (elapsedTime < abstime())
-		{
-			Message("Target keeps hiding behind mountain. Stop tracking and try other position");
-			StoreDebug("Target keeps hiding behind mountain. Stop tracking and try other position");
-			avoidStuck();
-			errmode(1);
-			return;		
-		}
-		
+	{		
 		if (target == null || target.dead)
 		{
 			errmode(1);
 			return;
+		}
+		
+		if (elapsedTime < abstime())
+		{
+			Message("No LOS, stop tracking and try other position");
+			if (target.position.z + 1 < this.position.z)
+			{
+				// target is below bot, move 0.5 m towards target
+				motor(1,1);
+				wait(1);
+				checkEnemyThreat();
+				motor(1,1);
+				wait(1);
+				checkEnemyThreat();
+				motor(1,1);
+				wait(1);
+				checkEnemyThreat();				
+			}
+			else
+			{
+				// target is same level or above bot, move side way random
+				avoidStuck();
+			}
+			errmode(1);
+			return;		
 		}
 		
 		current = radar(com.ants,0,360,0,scanRange);
@@ -5060,7 +5155,7 @@ public void object::LandAim(object target)
 			{
 				aimat(current.position);
 				fire(0.2);
-				StoreDebug("Fired new enemy with emergency aim");
+				Debug("Fired new enemy with emergency aim");
 			}
 			errmode(1);
 			return;
@@ -5232,7 +5327,11 @@ public void object::LandAim(object target)
 		motor(-motorOutput, motorOutput); // apply turn rate
 		
 		// check LOS before fire, if no LOS keep tracking target movements
-		if (!checkLOS(target.position)) continue;
+		if (!checkLOS(target.position))
+		{
+			cacheGrid();
+			continue;
+		}
 		
 		// Fired with advanced aim if target is within weapon envelope
 		if (range <= 20 || (a >= minAngle && a <= maxAngle && azimuth >= -2 && azimuth <= 2 && fireTime < abstime()))
@@ -5241,7 +5340,7 @@ public void object::LandAim(object target)
 			{
 				fire(0.2);
 				fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-				StoreDebug("LandAim Fired target with advanced aim: a " + a + ", azimuth " + azimuth + ", fireTime " + fireTime + ", range " + range);
+				Debug("LandAim Fired target with advanced aim: a " + a + ", azimuth " + azimuth + ", fireTime " + fireTime + ", range " + range);
 			}
 		}
 		else
@@ -5253,7 +5352,7 @@ public void object::LandAim(object target)
 					aimat(target.position);
 					fire(0.2);
 					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-					StoreDebug("LandAim Fired target with emergency aim: a " + a + ", azimuth " + azimuth + ", fireTime " + fireTime + ", range " + range);
+					Debug("LandAim Fired target with emergency aim: a " + a + ", azimuth " + azimuth + ", fireTime " + fireTime + ", range " + range);
 				}
 			}
 		}
@@ -5328,67 +5427,79 @@ public void object::aimat(point p)
 public point[] object::searchEscapeMountainPath(point botPoint, point target)
 {
 	SatCom com();
+	
 	int totalNodes = com.totalNodes;
-	
-	float groundLevel = topo(com.spaceShip.position) - 7;
-	float safeFlyingHeight = groundLevel + 10.0;
-	float maxOpenHeight = (target.z + 3 > groundLevel + 3 ? target.z + 3 : groundLevel + 3);
-	
 	int startIndex = getNodeIndex(botPoint);
 	int targetIndex = getNodeIndex(target);
+	float moveCost[8] = {10, 14.14, 10, 14.14, 10, 14.14, 10, 14.14};
 	
 	point startPoint; startPoint.x = getNodeX(startIndex); startPoint.y = getNodeY(startIndex); startPoint.z = getNodeZ(startIndex);
 	plantFlag(startPoint, YellowFlag);
 	point targetPoint; targetPoint.x = getNodeX(targetIndex); targetPoint.y = getNodeY(targetIndex); targetPoint.z = getNodeZ(targetIndex);
 	plantFlag(targetPoint, GreenFlag);
 	
+	float maxOpenZ	= max(startPoint.z,targetPoint.z) + (this.category == WingedShooter || this.category == WingedOrgaShooter ? 5 : 14);
+	
 	if (startIndex == targetIndex)
 	{
 		point shortPath[2];
-		shortPath[0] = botPoint; shortPath[0].z = safeFlyingHeight;
-		shortPath[1] = target;   shortPath[1].z = safeFlyingHeight;
+		shortPath[0] = botPoint;
+		shortPath[1] = target;
 		return shortPath;
 	}
 	
-	// ---------- SIMPLE A* DATA ----------
-	int visited[totalNodes];
+	// ---------- A* DATA WITH SINGLE STATE ARRAY ----------
+	// state: 0 = UNVISITED (never seen), 1 = IN_OPEN (in priority queue), 2 = CLOSED (expanded)
+	int state[totalNodes];
 	int parent[totalNodes];
-	int gCost[totalNodes];
-	int fCost[totalNodes];
+	float gCost[totalNodes];
+	float fCost[totalNodes];
 	int openList[totalNodes];
 	int openSize = 0;
-	int inOpen[totalNodes];
+	int maxOpenCount = 0;
 	
 	for (int i = 0; i < totalNodes; i++)
 	{
-		visited[i] = 0;
+		state[i] = 0;	  // UNVISITED
 		parent[i] = -1;
 		gCost[i] = 999999;
 		fCost[i] = 999999;
-		inOpen[i] = 0;
 	}
 	
 	gCost[startIndex] = 0;
-	fCost[startIndex] = abs(getNodeX(startIndex) - targetPoint.x) + abs(getNodeY(startIndex) - targetPoint.y); // Manhattan
+	fCost[startIndex] = distanceAlphaMax(startPoint.x - targetPoint.x, startPoint.y - targetPoint.y);
+	
 	openList[openSize] = startIndex;
 	openSize = openSize + 1;
-	inOpen[startIndex] = 1;
+	state[startIndex] = 1;  // IN_OPEN
 	
 	int found = 0;
 	int meetNode = -1;
 	int nodesExplored = 0;
 	
-	// ---------- SIMPLE LOOP ----------
+	int bestIdx;
+	int bestF;
+	int bestOpenIdx;	
+	int idx;
+	int current, next;
+	float parentZ, currentZ, nextZ;
+	
+	float movementCost;
+	float tentativeG;
+	
+	// ---------- MAIN LOOP ----------
 	while (found == 0 && openSize > 0)
 	{
+		if (openSize > maxOpenCount) maxOpenCount = openSize;
+		
 		// Find best node
-		int bestIdx = -1;
-		int bestF = 999999;
-		int bestOpenIdx = -1;
+		bestIdx = -1;
+		bestF = 999999;
+		bestOpenIdx = -1;
 		
 		for (int i = 0; i < openSize; i++)
 		{
-			int idx = openList[i];
+			idx = openList[i];
 			if (fCost[idx] < bestF)
 			{
 				bestF = fCost[idx];
@@ -5402,11 +5513,14 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 		// Remove from open
 		openList[bestOpenIdx] = openList[openSize - 1];
 		openSize = openSize - 1;
-		inOpen[bestIdx] = 0;
 		
-		int current = bestIdx;
-		visited[current] = 1;
-		nodesExplored = nodesExplored + 1;
+		// If this node is already CLOSED (stale entry), skip it
+		if (state[bestIdx] == 2) continue;
+		
+		// Mark as CLOSED (expanded)
+		state[bestIdx] = 2;
+		current = bestIdx;
+		nodesExplored++;
 		
 		if (current == targetIndex)
 		{
@@ -5415,28 +5529,47 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 			break;
 		}
 		
+		currentZ = getNodeZ(current);
+		if (parent[current] != -1)
+		{
+			parentZ = getNodeZ(parent[current]);
+		}
+		
 		// Expand 8 neighbors
 		for (int d = 0; d < 8; d++)
 		{
-			int next = getNeighborIndex(current, d);
+			next = getNeighborIndex(current, d);
 			if (next == -1) continue;
-			if (getNodeZ(next) > maxOpenHeight) continue;
-			if (visited[next] == 1) continue;
+			nextZ = getNodeZ(next);
+			// --- UNIVERSAL CHECK: Blocks >45 degrees slopes ---
+			// Both bots cannot climb steep walls, and fly bot stays in valleys
+			if (nextZ > maxOpenZ) continue; // if higher than startPoint or targetPoint, block this neighbor node
+			if (nextZ > 0 && currentZ > 0 && nextZ - currentZ > moveCost[d] - 2) continue; // if angle from current to next is steeper than 45 degrees, block this neighbor node
+			if (parent[current] != -1 && nextZ > 0 && parentZ > 0 && nextZ - parentZ > 16) continue;  // if angle  from parent to current to next is continously  steeper than 45 degrees , block this neighbor node
 			
-			int tentativeG = gCost[current] + 1;
+			tentativeG = gCost[current] + moveCost[d];
 			
 			if (tentativeG < gCost[next])
 			{
 				gCost[next] = tentativeG;
 				parent[next] = current;
-				fCost[next] = tentativeG + abs(getNodeX(next) - targetPoint.x) + abs(getNodeY(next) - targetPoint.y);
+				fCost[next] = tentativeG + distanceAlphaMax(getNodeX(next) - targetPoint.x, getNodeY(next) - targetPoint.y);
 				
-				if (inOpen[next] == 0)
+				// If this node was CLOSED, RE-OPEN it!
+				if (state[next] == 2)
 				{
+					state[next] = 1;  // Re-open: move back to IN_OPEN
 					openList[openSize] = next;
 					openSize = openSize + 1;
-					inOpen[next] = 1;
 				}
+				else if (state[next] == 0)  // UNVISITED
+				{
+					state[next] = 1;  // First time: add to IN_OPEN
+					openList[openSize] = next;
+					openSize = openSize + 1;
+				}
+				// If state[next] == 1 (IN_OPEN), it's already in the list.
+				// We just updated its cost, no need to add it again.
 			}
 		}
 	}
@@ -5445,15 +5578,16 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	if (found == 0 || meetNode == -1)
 	{
 		Message("A*: No path, direct");
+		Debug("A*: No path, direct");
 		point directPath[2];
-		directPath[0] = botPoint; directPath[0].z = safeFlyingHeight;
-		directPath[1] = target;   directPath[1].z = (target.z <= 0.0) ? safeFlyingHeight : target.z + 10.0;
+		directPath[0] = botPoint;
+		directPath[1] = target;
 		return directPath;
 	}
 	
 	int tempPath[totalNodes];
 	int pathLen = 0;
-	int current = meetNode;
+	current = meetNode;
 	while (current != -1 && pathLen < totalNodes)
 	{
 		tempPath[pathLen] = current;
@@ -5464,12 +5598,13 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	point result[pathLen];
 	for (int i = 0; i < pathLen; i = i + 1)
 	{
-		int idx = tempPath[pathLen - 1 - i];
+		idx = tempPath[pathLen - 1 - i];
 		result[i] = getNodePoint(idx);
-		plantFlag(result[i], Target2);
+		plantFlag(result[i], 50);
 	}
 	
-	Message("A* explored " + nodesExplored + " nodes, path: " + pathLen);
+	Message("A* explored " + nodesExplored + " nodes, path: " + pathLen + ", maxOpenCount " + maxOpenCount);
+	Debug("A* explored " + nodesExplored + " nodes, path: " + pathLen + ", maxOpenCount " + maxOpenCount);
 	return result;
 }
 
@@ -5490,10 +5625,10 @@ public void object::escapeMountain(point botPoint, point target)
 	jet(-0.01);
 	turn(direction(target));
 	motor(0,0);
-	float t = abstime();
 	float dir;
 	float dis;
 	Message("Searching for path...");
+	float t = abstime();
 	point pathPoints[] = searchEscapeMountainPath(this.position, target);
 	int pathLength = sizeof(pathPoints);
 	int i;
@@ -5504,6 +5639,7 @@ public void object::escapeMountain(point botPoint, point target)
 		return;
 	}
 	Message("Path found in " + (abstime()-t) + " second(s), switch to guided mode");
+	Debug("Path found in " + (abstime()-t) + " second(s), switch to guided mode");
 	for (i = 1; i < pathLength; i++)
 	{
 		p = pathPoints[i];
@@ -5519,7 +5655,7 @@ public void object::escapeMountain(point botPoint, point target)
 		dis = distance2d(this.position,target);
 		if (checkLOS(target) && dis > com.safeAnt)
 		{
-			Message("Line of sight clear, switch to combat mode");
+			Message("Line of sight clear, switch back to combat mode");
 			return;
 		}
 		while (distance2d(this.position,p) > 5 && distance2d(this.position,p) < distance2d(this.position,next))
@@ -5568,18 +5704,16 @@ public void object::ClearDebug()
 	com.debugCount = 0;
 }
 
-public void object::StoreDebug(string msg)
+public void object::Debug(string msg)
 {
 	SatCom com();
 	
 	if (!com.debug) return;
-	
-	com.returnMessage = category + ": Timestamp " + abstime() + " " + msg;
-	com.debugBuffer[com.debugIndex] = com.returnMessage;
+	com.debugBuffer[com.debugIndex] = category + ": Timestamp " + abstime() + " " + msg;;
 	com.debugIndex = (com.debugIndex + 1) % 100;
 	if (com.debugCount < 100)
 	{
-		com.debugCount = com.debugCount + 1;
+		com.debugCount++;
 	}
 }
 
@@ -5596,7 +5730,6 @@ public void object::PrintDebug()
 	string filename =  "debug.txt";
 	file handle();
 	handle.open(filename, "w");
-	
 	handle.writeln("=== DEBUG BUFFER (" + com.debugCount + " messages) ===");
 	handle.writeln("Timestamp: " + abstime());
 	handle.writeln("");
@@ -5627,3 +5760,13 @@ public void object::PrintDebug()
 	message("Debug buffer written to: files/" + filename);
 }
 
+public float object::distanceAlphaMax(float dx, float dy)
+{
+	dx = abs(dx);
+	dy = abs(dy);
+	
+	if (dx > dy)
+		return 0.960 * dx + 0.397 * dy;
+	else
+		return 0.960 * dy + 0.397 * dx;
+}
