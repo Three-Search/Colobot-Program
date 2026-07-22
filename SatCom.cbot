@@ -12,6 +12,11 @@ For flying shooter bots, this library program used "ThreeSearch Progressive Cach
 ThreeSearch Progressive Caching Pattern is a navigation architecture for terrain-based pathfinding that minimizes upfront preprocessing by combining lazy terrain evaluation, shared caching,
 passive cache warming during normal movement, and progressive reuse of terrain knowledge across searches. The pattern is independent of the underlying pathfinding algorithm and can be paired with A*, bidirectional search, LiteRBS, Dijkstra, or other graph-search methods.
 
+The SatCom library equips bots with advanced pathfinding and sophisticated aiming algorithms, enabling behavior that goes far beyond simple scripted logic. When a bot navigates valleys, hills, and mountains, it continuously scans the surrounding terrain and builds a cached 
+terrain map ahead of its movement. This allows it to intelligently avoid steep cliffs, follow natural valleys, and choose efficient routes through complex environments. When approaching a target, the bot pauses briefly to calculate a ballistic firing solution, compensating for
+terrain slope, projectile trajectory, and target movement before firing with exceptional precision. As a result, it almost never misses. These systems combine to produce emergent intelligence - complex, lifelike behavior arising from relatively simple algorithms working together.
+Rather than appearing to follow predetermined scripts, the bots exhibit adaptive decision-making that makes them feel as though they possess their own intelligence and awareness.
+
 Usage:
 
 1. Copy and paste following files from https://github.com/Three-Search/Colobot-Program to the Colobot\data\ai folder
@@ -5478,7 +5483,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	int nodesExplored = 0;
 	
 	int bestIdx;
-	int bestF;
+	float bestF;
 	int bestOpenIdx;	
 	int idx;
 	int current, next;
