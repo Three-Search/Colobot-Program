@@ -35,7 +35,7 @@ public void object::Shooter()
 	camerafocus(this);
 	if (category == LeggedOrgaShooter)
 	{
-		landGuard(com.spaceShip,150);
+		landGuard(com.spaceShip,30);
 	}
 	else
 	{
