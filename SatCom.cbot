@@ -1476,20 +1476,51 @@ public void object::crawl(point p)
 
 public void object::jetPower(point p)
 {
+	SatCom com();
+	
 	float dis = distance(this.position,p);
 	float dif = p.z-this.position.z;
 	float ang = asin(dif/dis);
+	
+	if (com.detectedWasp)
+	{
+		object wasp = search(AlienWasp, p, 0, 4);
+		if (wasp != null && dis < 80)
+		{
+			if (this.position.z > wasp.position.z)
+			{
+				if (this.altitude > 3)
+				{
+					jet(-0.4);
+				}
+				else
+				{
+					jet(0);
+				}
+			}
+			else if (this.position.z < wasp.position.z)
+			{
+				jet(0.4);
+			}
+			else
+			{
+				jet(0);
+			}
+			return;
+		}
+	}
+	
 	if (dis <= 60)
 	{
-		jet(1-(ang/-18)); // thrust until 18 degrees above target
+		jet(1-(ang/-16)); // thrust until 18 degrees above target
 	}
 	else if (60 < dis && dis < 120)
 	{
-		jet(1-(ang/-16)); // thrust until 16 degrees above target
+		jet(1-(ang/-14)); // thrust until 16 degrees above target
 	}
 	else
 	{
-		jet(1-(ang/-12)); // thrust until 12 degrees above target
+		jet(1-(ang/-20)); // thrust until 12 degrees above target
 	}
 }
 
@@ -3872,7 +3903,14 @@ public void object::aimAndFire(object target)
 	
 	if (category == WingedShooter || category == WingedOrgaShooter)
 	{
-		AirAim(target);
+		if (target.category == AlienWasp)
+		{
+			WaspAim(target);
+		}
+		else
+		{
+			AirAim(target);
+		}
 		return;
 	}
 }
@@ -4436,7 +4474,7 @@ public void object::LandAim(object target)
 			{
 				fire(0.2);
 				fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-				Message("Fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", fireTime " + fireTime + ", range " + range);
+				Message("Fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 			}
 		}
 		else
@@ -4448,7 +4486,7 @@ public void object::LandAim(object target)
 					aimat(target.position);
 					fire(0.2);
 					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-					Message("Fired with emergency aim: angle " + a + ", azimuth " + azimuth + ", fireTime " + fireTime + ", range " + range);
+					Message("Fired with emergency aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 				}
 			}
 		}
@@ -4492,7 +4530,7 @@ public void object::AirAim(object target)
 		{
 			jet(-0.5);
 		}
-		wait(0.02);
+		//wait(0.02);
 	}
 	while ((angle < -18 || angle > 18) && i < 100);
 	
@@ -4518,6 +4556,193 @@ public void object::aimat(point p)
 	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
 	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
 	aim(-aimpitch,-aimangle);
+}
+
+public void object::WaspAim_myself(object target)
+{
+	SatCom com();
+	
+	int burstCount = 3;
+	float burstInterval = 0.05;
+	
+	if (target == null || target.dead) return;
+	
+	while (true)
+	{
+		if (target == null || target.dead) break;
+		object current = radar(AlienWasp, 0, 360, 0, com.attackRange);
+		if (current == null) break;
+		// Nearer enemy appeared — emergency switch
+		if (current != target)
+		{
+			if (checkLOS(current.position))
+			{
+				aimat(current.position);
+				fire(0.2);
+			}
+			break;
+		}
+		if (this.position.z > target.position.z)
+		{
+			jet(-0.5);
+		}
+		else if (this.position.z < target.position.z)
+		{
+			jet(0.5);
+		}
+		else
+		{
+			jet(0);
+		}
+		float dis = distance(this.position,target.position);
+		if (dis <= com.attackRange)
+		{
+			for (int i = 0; i < 3; i++)
+			{
+				if (target == null || target.dead) break;
+				aimat(target.position);
+				fire(0.05);
+				wait(burstInterval);
+			}
+		}
+	}
+}
+
+public void object::WaspAim_kimi(object target)
+{
+	SatCom com();
+	
+	if (target == null || target.dead) return;
+	
+	float scanRange = com.safeQueen;   // 80m
+	float v0 = 50.0;
+	float g = 50.0;
+	float minAngle = -20.0;
+	float maxAngle = 20.0;
+	float safeAngle = 18.0;            // 2° margin from gun limits
+	int burstCount = 3;
+	float burstInterval = 0.05;
+	
+	point oldPos = target.position;
+	float oldTime = abstime();
+	float oldBearing = this.orientation + direction(target.position);
+	float fireTime = abstime() + 0.2;
+	float expireTime = abstime() + 6.0;
+	
+	errmode(0);
+	
+	while (true)
+	{
+		if (target == null || target.dead) break;
+		
+		object current = radar(com.ants, 0, 360, 0, scanRange);
+		if (current == null) break;
+		
+		// Nearer enemy appeared — emergency switch
+		if (current != target)
+		{
+			if (checkLOS(current.position))
+			{
+				aimat(current.position);
+				fire(0.2);
+			}
+			break;
+		}
+		
+		float now = abstime();
+		if (now > expireTime) break;
+		
+		point pos = target.position;
+		float dt = now - oldTime;
+		if (dt < 0.02) dt = 0.02;
+		
+		// === VELOCITY ESTIMATE (dampened) ===
+		float vx = (pos.x - oldPos.x) / dt * 0.5;
+		float vy = (pos.y - oldPos.y) / dt * 0.5;
+		float vz = (pos.z - oldPos.z) / dt * 0.3;
+		
+		// === INTERCEPT PREDICTION ===
+		float dx = pos.x - this.position.x;
+		float dy = pos.y - this.position.y;
+		float dz = pos.z - this.position.z;
+		float dist2d = sqrt(dx*dx + dy*dy);
+		float dist3d = sqrt(dist2d*dist2d + dz*dz);
+		
+		float it = dist3d / v0;
+		if (it < 0.05) it = 0.05;
+		if (it > 1.5) it = 1.5;
+		
+		point pred;
+		pred.x = pos.x + vx * it;
+		pred.y = pos.y + vy * it;
+		pred.z = pos.z + vz * it + 0.5 * g * it * it * 0.4;
+		
+		// === REQUIRED GUN ELEVATION (degrees) ===
+		float pdx = pred.x - this.position.x;
+		float pdy = pred.y - this.position.y;
+		float pdz = pred.z - this.position.z;
+		float pdist2d = sqrt(pdx*pdx + pdy*pdy);
+		if (pdist2d < 0.1) pdist2d = 0.1;
+		
+		float reqElev = atan2(pdz, pdist2d);  // CBOT atan2 returns degrees
+		
+		// === ALTITUDE CONTROL ===
+		if (reqElev > safeAngle)
+		{
+			jet(0.5);   // Wasp too high relative to us — rise
+		}
+		else if (reqElev < -safeAngle)
+		{
+			jet(-0.5);  // Wasp too low — descend
+		}
+		else
+		{
+			jet(0);     // Within firing cone — hold
+		}
+		
+		// === TURN WITH LEAD ===
+		float bearing = this.orientation + direction(pos);
+		float deltaBearing = bearing - oldBearing;
+		if (deltaBearing < -180) deltaBearing += 360;
+		if (deltaBearing > 180) deltaBearing -= 360;
+		
+		float azimuth = direction(pred);
+		if (azimuth > 180) azimuth -= 360;
+		if (azimuth < -180) azimuth += 360;
+		
+		float turnOut = (azimuth * 0.6 + deltaBearing / dt * 0.4) / 54.0;
+		if (turnOut > 1) turnOut = 1;
+		if (turnOut < -1) turnOut = -1;
+		motor(-turnOut, turnOut);
+		
+		// === AIM GUN ===
+		float aimElev = reqElev;
+		if (aimElev < minAngle) aimElev = minAngle;
+		if (aimElev > maxAngle) aimElev = maxAngle;
+		aim(aimElev);
+		
+		// === FIRE ===
+		if (reqElev >= minAngle && reqElev <= maxAngle && abs(azimuth) < 10 && fireTime < now && dist2d <= scanRange)
+		{
+			for (int i = 0; i < burstCount; i++)
+			{
+				if (target == null || target.dead) break;
+				fire(0.05);
+				wait(burstInterval);
+			}
+			fireTime = now + it + 0.15;
+			Message("WaspAim: Burst, range " + dist2d + "m");
+		}
+		
+		oldPos = pos;
+		oldTime = now;
+		oldBearing = bearing;
+		wait(0.03);
+	}
+	
+	motor(0, 0);
+	jet(0);
+	errmode(1);
 }
 
 public void object::WaspAim(object target)
@@ -4568,13 +4793,6 @@ public void object::WaspAim(object target)
 	float horizontalDist;
 	
 	errmode(0);
-	
-	// === HOVER STABILIZATION ===
-	if (this.category == WingedShooter || this.category == WingedOrgaShooter)
-	{
-		jet(0);
-		motor(0, 0);
-	}
 	
 	// Initialize tracking
 	oldBearing = this.orientation + direction(target.position);
@@ -4636,29 +4854,7 @@ public void object::WaspAim(object target)
 		oldTime = time;
 		
 		// === FAST ALTITUDE OPTIMIZATION (No Trig!) ===
-		heightDiff = target.position.z - this.position.z;
-		
-		if (heightDiff > 0)
-		{
-			// Wasp is too high - rise up
-			if (this.altitude < maxAltitude)
-			{
-				jet(0.5);
-			}
-		}
-		else if (heightDiff < 0)
-		{
-			// Wasp is too low - descend
-			if (this.altitude > minAltitude)
-			{
-				jet(-0.5);
-			}
-		}
-		else
-		{
-			// Wasp is within firing cone - hold altitude
-			jet(0);
-		}
+		jetPower(target.position);
 		
 		// === STANDARD BALLISTIC PREDICTION ===
 		t = it / deltaTime;
@@ -4726,7 +4922,7 @@ public void object::WaspAim(object target)
 		motor(-motorOutput, motorOutput);
 		
 		// === FIRE (Burst) ===
-		if (range <= 20 || (a >= minAngle && a <= maxAngle && abs(azimuth) <= 2 && fireTime < abstime()))
+		if (range <= 20 || (a >= minAngle && a <= maxAngle && abs(azimuth) <= 3 && fireTime < abstime()))
 		{
 			if (target != null && !target.dead)
 			{
@@ -4816,7 +5012,7 @@ public bool object::isFlat(point p, float radius)
 		neighbor.z = topo(neighbor);
 		
 		// If height difference > 0.4m, terrain is not flat
-		if (abs(neighbor.z - p.z) > 0.4) return false;
+		if (neighbor.z < 0 || abs(neighbor.z - p.z) > 0.4) return false;
 	}
 	
 	// All 4 neighbors are within 0.4m height difference
@@ -4829,7 +5025,7 @@ public bool object::isLandingPoint(point p)
 	
 	if (!isFlat(p,com.safeFlatGround)) return false;
 	if (distance2GraviPlant(p) < com.safeRoot) return false;
-	//if (distance2Enemies(p) < com.safeAnt*3/2) return false;
+	if (distance2Spider(p) < com.safeAnt) return false;
 	if (!checkLOS(p)) return false;
 	return true;
 }
@@ -4928,7 +5124,9 @@ public void object::gotoSafeLZ(object o)
 	SatCom com();
 	
 	float t = abstime();
+	ipf(10000);
 	point landingPoint = searchSafeLZ(this.position);
+	ipf(100);
 	if (landingPoint.x == 0 && landingPoint.y == 0 && landingPoint.z == 0)
 	{
 		Message("Could not found safe landing point! Emergency landing at current position.");
@@ -5248,7 +5446,7 @@ public void object::attack()
 
 public void object::airAttack()
 {
-	airAttack(this,10000);
+	airAttack(this,1000);
 }
 
 public void object::airAttack(object o,float radius)
@@ -5259,8 +5457,6 @@ public void object::airAttack(object o,float radius)
 	float dir,dis2Base,dis2Enemy,detectRange;
 	point p,last,start,left,right;
 	int i;
-	
-	ipf(10000);
 	
 	center = o;
 	detectRange = radius;
@@ -5278,12 +5474,21 @@ public void object::airAttack(object o,float radius)
 				com.detectedWasp = true;
 			}
 		}
-		enemy = search(com.ants,center.position,0,detectRange);
-		if (enemy == null && com.detectedWasp)
+		
+		if (com.detectedWasp)
 		{
 			enemy = search(AlienWasp,center.position,0,detectRange);
+			if (enemy == null)
+			{
+				enemy = search(com.ants,center.position,0,detectRange);
+			}
 		}
-		else if (enemy == null && com.detectedWorm)
+		else
+		{
+			enemy = search(com.ants,center.position,0,detectRange);
+		}
+		
+		if (enemy == null && com.detectedWorm)
 		{
 			enemy = Radar(AlienWorm);
 		}
@@ -5407,8 +5612,6 @@ public void object::airGuard(object center, float radius)
 	float dir,dis2Base,dis2Enemy,detectRange;
 	point p,last,start,left,right;
 	int i;
-	
-	//ipf(10000);
 	
 	if (center == null)
 	{
@@ -5564,7 +5767,7 @@ public void object::landAttack()
 		{
 			o = radar(Any,0,90,1.5,3);
 		}
-		if (o != null && o.category != target.category && distance2d(this.position,target.position) > com.safeAnt)
+		if (o != null && o.category != 50 && o.category != 51 && o.category != 52 && o.category != target.category && distance2d(this.position,target.position) > com.safeAnt)
 		{
 			turn(direction(o.position));
 			avoidStuck();
@@ -5616,6 +5819,11 @@ public void object::landGuard(object center, float radius)
 	errmode(0);
 	SatCom com();
 	
+	int enemies[];
+	
+	enemies[0] = AlienWasp;
+	enemies[1] = AlienAnt;
+	
 	while (com.cachedNodes < 0)
 	{
 		wait(0.2);
@@ -5627,16 +5835,30 @@ public void object::landGuard(object center, float radius)
 		return;
 	}
 	
-	object target, o;
-	float dis, dir, dirC;
+	object target, current, o;
+	float dis, disC2T, disB2T, dir, dirC;
 	point m, p;
-	while (found(com.ants))
+	
+	while (true)
 	{
-		checkEnemyThreat();
-		target = search(com.ants,center.position,0,1000);
-		if (target == null) break;
-		dis = distance2d(center.position,target.position);
-		if (dis > 200)
+		target = search(enemies,center.position);
+		if (target == null) continue;
+		disC2T = distance2d(center.position,target.position);
+		disB2T = distance2d(this.position,target.position);
+		if (disC2T < 80 || disB2T < 80)
+		{
+			aimAndFire(target);
+			if (this.category == WingedShooter || this.category == WingedOrgaShooter)
+			{
+				while (this.altitude > 0)
+				{
+					jet(-0.5);
+				}
+				jet(0);
+			}
+			continue;
+		}
+		if (disC2T > 200)
 		{
 			checkSelfStatus();
 		}
@@ -5687,9 +5909,10 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	float moveCost[8] = {10, 14.14, 10, 14.14, 10, 14.14, 10, 14.14};
 	
 	point startPoint; startPoint.x = getNodeX(startIndex); startPoint.y = getNodeY(startIndex); startPoint.z = getNodeZ(startIndex);
-	plantFlag(startPoint, YellowFlag);
+	plantFlag(startPoint, 51); // red cross
 	point targetPoint; targetPoint.x = getNodeX(targetIndex); targetPoint.y = getNodeY(targetIndex); targetPoint.z = getNodeZ(targetIndex);
-	plantFlag(targetPoint, GreenFlag);
+	plantFlag(targetPoint, 52); // yellow cross
+	point nextPoint;
 	
 	float maxOpenZ	= max(startPoint.z,targetPoint.z) + (this.category == WingedShooter || this.category == WingedOrgaShooter ? 5 : 14);
 	
@@ -5720,13 +5943,13 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	}
 	
 	gCost[startIndex] = 0;
-	fCost[startIndex] = distanceAlphaMax(startPoint.x - targetPoint.x, startPoint.y - targetPoint.y);
+	fCost[startIndex] = distance(startPoint, targetPoint);
 	
 	openList[openSize] = startIndex;
 	openSize = openSize + 1;
 	state[startIndex] = 1;  // IN_OPEN
 	
-	int found = 0;
+	int foundPath = 0;
 	int meetNode = -1;
 	int nodesExplored = 0;
 	
@@ -5737,11 +5960,10 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	int current, next;
 	float parentZ, currentZ, nextZ;
 	
-	float movementCost;
 	float tentativeG;
 	
 	// ---------- MAIN LOOP ----------
-	while (found == 0 && openSize > 0)
+	while (foundPath == 0 && openSize > 0)
 	{
 		if (openSize > maxOpenCount) maxOpenCount = openSize;
 		
@@ -5778,9 +6000,10 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 		if (current == targetIndex)
 		{
 			meetNode = current;
-			found = 1;
+			foundPath = 1;
 			break;
 		}
+		
 		
 		currentZ = getNodeZ(current);
 		if (parent[current] != -1)
@@ -5797,16 +6020,17 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 			// --- UNIVERSAL CHECK: Blocks >45 degrees slopes ---
 			// Both bots cannot climb steep walls, and fly bot stays in valleys
 			if (nextZ > maxOpenZ) continue; // if higher than startPoint or targetPoint, block this neighbor node
-			if (nextZ > 0 && currentZ > 0 && nextZ - currentZ > moveCost[d] - 2) continue; // if angle from current to next is steeper than 45 degrees, block this neighbor node
-			if (parent[current] != -1 && nextZ > 0 && parentZ > 0 && nextZ - parentZ > 16) continue;  // if angle  from parent to current to next is continously  steeper than 45 degrees , block this neighbor node
+			if (nextZ > 0 && currentZ > 0 && nextZ - currentZ > moveCost[d]*0.6) continue; // if angle from current to next is steeper than 31 degrees, block this neighbor node tan(31) = 0.6
+			if (parent[current] != -1 && nextZ > 0 && parentZ > 0 && nextZ - parentZ > 12) continue;  // if angle  from parent to current to next is continously  steeper than 31 degrees , block this neighbor node
 			
-			tentativeG = gCost[current] + moveCost[d];
+			tentativeG = gCost[current] + sqrt(moveCost[d]*moveCost[d] + (nextZ - currentZ)*(nextZ - currentZ));
 			
 			if (tentativeG < gCost[next])
 			{
 				gCost[next] = tentativeG;
 				parent[next] = current;
-				fCost[next] = tentativeG + distanceAlphaMax(getNodeX(next) - targetPoint.x, getNodeY(next) - targetPoint.y);
+				nextPoint = getNodePoint(next);
+				fCost[next] = tentativeG + distance(nextPoint, targetPoint);
 				
 				// If this node was CLOSED, RE-OPEN it!
 				if (state[next] == 2)
@@ -5828,7 +6052,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	}
 	
 	// ---------- RECONSTRUCT ----------
-	if (found == 0 || meetNode == -1)
+	if (foundPath == 0 || meetNode == -1)
 	{
 		Message("A*: No path, direct");
 		Debug("A*: No path, direct");
@@ -5853,7 +6077,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	{
 		idx = tempPath[pathLen - 1 - i];
 		result[i] = getNodePoint(idx);
-		plantFlag(result[i], 50);
+		if (0 < i && i < pathLen - 1) plantFlag(result[i], 50); // green cross
 	}
 	
 	Message("A* explored " + nodesExplored + " nodes, path: " + pathLen + ", maxOpenCount " + maxOpenCount);
@@ -5880,7 +6104,9 @@ public void object::escapeMountain(point botPoint, point target)
 	float dis;
 	Message("Searching for path...");
 	float t = abstime();
+	ipf(10000);
 	point pathPoints[] = searchEscapeMountainPath(this.position, target);
+	ipf(100);
 	int pathLength = sizeof(pathPoints);
 	int i;
 	point p,next;
@@ -5998,13 +6224,3 @@ public void object::PrintDebug()
 	message("Debug buffer written to: files/" + filename);
 }
 
-public float object::distanceAlphaMax(float dx, float dy)
-{
-	dx = abs(dx);
-	dy = abs(dy);
-	
-	if (dx > dy)
-		return 0.960 * dx + 0.397 * dy;
-	else
-		return 0.960 * dy + 0.397 * dx;
-}
