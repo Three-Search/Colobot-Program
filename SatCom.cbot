@@ -1471,7 +1471,43 @@ public void object::crawl(point p)
 	
 	dir = direction(p);
 	motor(1 - dir/180,1 + dir/180);
+	
 	cacheGrid();
+}
+
+public void object::jetPower(object target)
+{
+	if (target == null) return;
+	
+	if (target.category != AlienWasp)
+	{
+		jetPower(target.position);
+		return;
+	}
+	
+	if (this.position.z > target.position.z + 2)
+	{
+		if (this.altitude > 2)
+		{
+			jet(-0.4);
+		}
+		else if (this.altitude < 2)
+		{
+			jet(0.4);
+		}
+		else
+		{
+			jet(0);
+		}
+	}
+	else if (this.position.z < target.position.z)
+	{
+		jet(0.4);
+	}
+	else
+	{
+		jet(0);
+	}
 }
 
 public void object::jetPower(point p)
@@ -1482,45 +1518,17 @@ public void object::jetPower(point p)
 	float dif = p.z-this.position.z;
 	float ang = asin(dif/dis);
 	
-	if (com.detectedWasp)
-	{
-		object wasp = search(AlienWasp, p, 0, 4);
-		if (wasp != null && dis < 80)
-		{
-			if (this.position.z > wasp.position.z)
-			{
-				if (this.altitude > 3)
-				{
-					jet(-0.4);
-				}
-				else
-				{
-					jet(0);
-				}
-			}
-			else if (this.position.z < wasp.position.z)
-			{
-				jet(0.4);
-			}
-			else
-			{
-				jet(0);
-			}
-			return;
-		}
-	}
-	
 	if (dis <= 60)
 	{
-		jet(1-(ang/-16)); // thrust until 18 degrees above target
+		jet(1-(ang/-18)); // thrust until 18 degrees above target
 	}
 	else if (60 < dis && dis < 120)
 	{
-		jet(1-(ang/-14)); // thrust until 16 degrees above target
+		jet(1-(ang/-16)); // thrust until 16 degrees above target
 	}
 	else
 	{
-		jet(1-(ang/-20)); // thrust until 12 degrees above target
+		jet(1-(ang/-12)); // thrust until 12 degrees above target
 	}
 }
 
@@ -1610,6 +1618,18 @@ public void object::cacheGrid()
 	}	
 }
 
+public void object::fly2Wasp(object target)
+{
+	SatCom com();
+	
+	if (target == null) return;
+	
+	jetPower(target);
+	motorPower(direction(target.position));
+	
+	cacheGrid();
+}
+
 public void object::fly(point p)
 {
 	SatCom com();
@@ -1624,7 +1644,7 @@ public void object::fly(point p)
 	point hit,left,right;
 	object root,o;
 	
-	if (this.altitude < 0.2)
+	if (this.altitude < 1)
 	{
 		jet(0.5);
 	}
@@ -3767,7 +3787,14 @@ public void object::moveAndDestroy(object target)
 	bool los = false;
 	
 	if (target == null) return;
-	fly(target.position);
+	if (target.category == AlienWasp)
+	{
+		fly2Wasp(target);
+	}
+	else
+	{
+		fly(target.position);
+	}
 	
 	if (com.detectedGraviPlant)
 	{
@@ -3794,7 +3821,7 @@ public void object::moveAndDestroy(object target)
 	}
 	
 	if (target == null) return;
-	dis = distance2d(this.position,target.position);
+	dis = distance(this.position,target.position);
 	if (target.category == AlienWasp && dis < com.safeQueen)
 	{
 		motor(0,0);
@@ -4528,7 +4555,7 @@ public void object::AirAim(object target)
 		}
 		else if (angle < -18)
 		{
-			jet(-0.5);
+			jet(-0.8);
 		}
 		//wait(0.02);
 	}
@@ -4556,193 +4583,6 @@ public void object::aimat(point p)
 	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
 	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
 	aim(-aimpitch,-aimangle);
-}
-
-public void object::WaspAim_myself(object target)
-{
-	SatCom com();
-	
-	int burstCount = 3;
-	float burstInterval = 0.05;
-	
-	if (target == null || target.dead) return;
-	
-	while (true)
-	{
-		if (target == null || target.dead) break;
-		object current = radar(AlienWasp, 0, 360, 0, com.attackRange);
-		if (current == null) break;
-		// Nearer enemy appeared — emergency switch
-		if (current != target)
-		{
-			if (checkLOS(current.position))
-			{
-				aimat(current.position);
-				fire(0.2);
-			}
-			break;
-		}
-		if (this.position.z > target.position.z)
-		{
-			jet(-0.5);
-		}
-		else if (this.position.z < target.position.z)
-		{
-			jet(0.5);
-		}
-		else
-		{
-			jet(0);
-		}
-		float dis = distance(this.position,target.position);
-		if (dis <= com.attackRange)
-		{
-			for (int i = 0; i < 3; i++)
-			{
-				if (target == null || target.dead) break;
-				aimat(target.position);
-				fire(0.05);
-				wait(burstInterval);
-			}
-		}
-	}
-}
-
-public void object::WaspAim_kimi(object target)
-{
-	SatCom com();
-	
-	if (target == null || target.dead) return;
-	
-	float scanRange = com.safeQueen;   // 80m
-	float v0 = 50.0;
-	float g = 50.0;
-	float minAngle = -20.0;
-	float maxAngle = 20.0;
-	float safeAngle = 18.0;            // 2° margin from gun limits
-	int burstCount = 3;
-	float burstInterval = 0.05;
-	
-	point oldPos = target.position;
-	float oldTime = abstime();
-	float oldBearing = this.orientation + direction(target.position);
-	float fireTime = abstime() + 0.2;
-	float expireTime = abstime() + 6.0;
-	
-	errmode(0);
-	
-	while (true)
-	{
-		if (target == null || target.dead) break;
-		
-		object current = radar(com.ants, 0, 360, 0, scanRange);
-		if (current == null) break;
-		
-		// Nearer enemy appeared — emergency switch
-		if (current != target)
-		{
-			if (checkLOS(current.position))
-			{
-				aimat(current.position);
-				fire(0.2);
-			}
-			break;
-		}
-		
-		float now = abstime();
-		if (now > expireTime) break;
-		
-		point pos = target.position;
-		float dt = now - oldTime;
-		if (dt < 0.02) dt = 0.02;
-		
-		// === VELOCITY ESTIMATE (dampened) ===
-		float vx = (pos.x - oldPos.x) / dt * 0.5;
-		float vy = (pos.y - oldPos.y) / dt * 0.5;
-		float vz = (pos.z - oldPos.z) / dt * 0.3;
-		
-		// === INTERCEPT PREDICTION ===
-		float dx = pos.x - this.position.x;
-		float dy = pos.y - this.position.y;
-		float dz = pos.z - this.position.z;
-		float dist2d = sqrt(dx*dx + dy*dy);
-		float dist3d = sqrt(dist2d*dist2d + dz*dz);
-		
-		float it = dist3d / v0;
-		if (it < 0.05) it = 0.05;
-		if (it > 1.5) it = 1.5;
-		
-		point pred;
-		pred.x = pos.x + vx * it;
-		pred.y = pos.y + vy * it;
-		pred.z = pos.z + vz * it + 0.5 * g * it * it * 0.4;
-		
-		// === REQUIRED GUN ELEVATION (degrees) ===
-		float pdx = pred.x - this.position.x;
-		float pdy = pred.y - this.position.y;
-		float pdz = pred.z - this.position.z;
-		float pdist2d = sqrt(pdx*pdx + pdy*pdy);
-		if (pdist2d < 0.1) pdist2d = 0.1;
-		
-		float reqElev = atan2(pdz, pdist2d);  // CBOT atan2 returns degrees
-		
-		// === ALTITUDE CONTROL ===
-		if (reqElev > safeAngle)
-		{
-			jet(0.5);   // Wasp too high relative to us — rise
-		}
-		else if (reqElev < -safeAngle)
-		{
-			jet(-0.5);  // Wasp too low — descend
-		}
-		else
-		{
-			jet(0);     // Within firing cone — hold
-		}
-		
-		// === TURN WITH LEAD ===
-		float bearing = this.orientation + direction(pos);
-		float deltaBearing = bearing - oldBearing;
-		if (deltaBearing < -180) deltaBearing += 360;
-		if (deltaBearing > 180) deltaBearing -= 360;
-		
-		float azimuth = direction(pred);
-		if (azimuth > 180) azimuth -= 360;
-		if (azimuth < -180) azimuth += 360;
-		
-		float turnOut = (azimuth * 0.6 + deltaBearing / dt * 0.4) / 54.0;
-		if (turnOut > 1) turnOut = 1;
-		if (turnOut < -1) turnOut = -1;
-		motor(-turnOut, turnOut);
-		
-		// === AIM GUN ===
-		float aimElev = reqElev;
-		if (aimElev < minAngle) aimElev = minAngle;
-		if (aimElev > maxAngle) aimElev = maxAngle;
-		aim(aimElev);
-		
-		// === FIRE ===
-		if (reqElev >= minAngle && reqElev <= maxAngle && abs(azimuth) < 10 && fireTime < now && dist2d <= scanRange)
-		{
-			for (int i = 0; i < burstCount; i++)
-			{
-				if (target == null || target.dead) break;
-				fire(0.05);
-				wait(burstInterval);
-			}
-			fireTime = now + it + 0.15;
-			Message("WaspAim: Burst, range " + dist2d + "m");
-		}
-		
-		oldPos = pos;
-		oldTime = now;
-		oldBearing = bearing;
-		wait(0.03);
-	}
-	
-	motor(0, 0);
-	jet(0);
-	errmode(1);
 }
 
 public void object::WaspAim(object target)
@@ -4806,6 +4646,12 @@ public void object::WaspAim(object target)
 	
 	while (true)
 	{
+		if (this.temperature > com.temperatureThreshold)
+		{
+			errmode(1);
+			return;		
+		}
+		
 		if (target == null || target.dead)
 		{
 			errmode(1);
@@ -4922,7 +4768,7 @@ public void object::WaspAim(object target)
 		motor(-motorOutput, motorOutput);
 		
 		// === FIRE (Burst) ===
-		if (range <= 20 || (a >= minAngle && a <= maxAngle && abs(azimuth) <= 3 && fireTime < abstime()))
+		if (range <= 20 || (range <= com.attackRange && a >= minAngle && a <= maxAngle && abs(azimuth) <= 3 && fireTime < abstime()))
 		{
 			if (target != null && !target.dead)
 			{
@@ -5467,7 +5313,15 @@ public void object::airAttack(object o,float radius)
 	{
 		checkSelfStatus();
 		
-		if (com.detectedEgg && !com.detectedWasp)
+		if (!com.detectedWorm)
+		{
+			if (radar(AlienWorm) != null)
+			{
+				com.detectedWorm = true;
+			}
+		}
+		
+		if (!com.detectedWasp)
 		{
 			if (radar(AlienWasp) != null)
 			{
