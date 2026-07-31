@@ -1,4 +1,4 @@
-extern void object::LandGuardAndAirAttack()
+extern void object::BaseGuardAndAirAttack()
 {
 	SatCom com();
 	
@@ -35,7 +35,7 @@ public void object::Shooter()
 	camerafocus(this);
 	if (category == LeggedOrgaShooter)
 	{
-		landGuard(com.spaceShip,30);
+		baseGuard(com.spaceShip,30);
 	}
 	else
 	{
