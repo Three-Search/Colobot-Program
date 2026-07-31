@@ -628,7 +628,7 @@ public class SatCom
 		RADII[601] = 02.00; //Wreckage; Sunken Whelled Grabber, Recyclable
 		RADII[602] = 03.00; //Wreckage; Tracked Shooter, Recyclable
 		RADII[603] = 03.00; //Wreckage; Sunken Tracked Shooter, Recyclable
-		RADII[603] = 02.50; //Wreckage; Sunken Recycler, Recyclable
+		RADII[604] = 02.50; //Wreckage; Sunken Recycler, Recyclable
 		RADII[605] = 02.50; //Wreckage; Recycler, Recyclable
 		
 		RADII[606] = 06.00; //Ruin; Bot Factory
@@ -4678,6 +4678,9 @@ public void object::WaspAim(object target)
 			return;
 		}
 		
+		// === FAST ALTITUDE OPTIMIZATION (No Trig!) ===
+		jetPower(target);
+		
 		// === COLLECT DATA ===
 		bearing = this.orientation + direction(target.position);
 		range = distance2d(this.position, target.position);
@@ -4698,10 +4701,7 @@ public void object::WaspAim(object target)
 		oldRange = range;
 		oldHeight = height;
 		oldTime = time;
-		
-		// === FAST ALTITUDE OPTIMIZATION (No Trig!) ===
-		jetPower(target.position);
-		
+				
 		// === STANDARD BALLISTIC PREDICTION ===
 		t = it / deltaTime;
 		azimuth = bearing + t * deltaBearing - orientation;
@@ -5677,6 +5677,7 @@ public void object::landGuard(object center, float radius)
 	
 	enemies[0] = AlienWasp;
 	enemies[1] = AlienAnt;
+	enemies[2] = AlienSpider;
 	
 	while (com.cachedNodes < 0)
 	{
@@ -5695,8 +5696,13 @@ public void object::landGuard(object center, float radius)
 	
 	while (true)
 	{
-		target = search(enemies,center.position);
-		if (target == null) continue;
+		
+		target = search(enemies,center.position,0,com.safeAnt);
+		if (target == null)
+		{
+			target = search(enemies,center.position);
+			if (target == null) continue;
+		}
 		disC2T = distance2d(center.position,target.position);
 		disB2T = distance2d(this.position,target.position);
 		if (disC2T < 80 || disB2T < 80)
