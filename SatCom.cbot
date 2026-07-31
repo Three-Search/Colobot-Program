@@ -5668,7 +5668,7 @@ public void object::landAttack()
 	errmode(1);
 }
 
-public void object::landGuard(object center, float radius)
+public void object::baseGuard(object center, float radius)
 {
 	errmode(0);
 	SatCom com();
