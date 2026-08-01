@@ -1514,29 +1514,66 @@ public void object::jetPower(point p)
 {
 	SatCom com();
 	
-	float dis = distance(this.position,p);
+	float dis3D = distance(this.position,p);
 	float dif = p.z-this.position.z;
-	float ang = asin(dif/dis);
+	float ang = asin(dif/dis3D);
+	float dis = distance2d(this.position,p);
+	float tan8 = 0.1405;
+	float tan9 = 0.1584;
+	float tan10 = 0.1763;
+	float tan12 = 0.2126;
+	float tan14 = 0.2493;
+	float tan15 = 0.2679;
+	float tan16 = 0.2867;
+	float tan17 = 0.3057;
+	float tan18 = 0.3249;
+	float h;
 	
-	if (dis <= 60)
+	if (dis <= com.attackRange)
 	{
-		jet(1-(ang/-18)); // thrust until 18 degrees above target
+		h = dis*tan8;
 	}
-	else if (60 < dis && dis < 120)
+	else if (com.attackRange < dis && dis <= com.attackRange*2)
 	{
-		jet(1-(ang/-16)); // thrust until 16 degrees above target
+		h = dis*tan10;
+	}
+	else if (com.attackRange*2 < dis && dis <= com.attackRange*3)
+	{
+		h = dis*tan18;
 	}
 	else
 	{
-		jet(1-(ang/-12)); // thrust until 12 degrees above target
+		h = dis*tan18;
+	}
+	
+	if (this.position.z > p.z + h + 0.2)
+	{
+		if (this.altitude > 2)
+		{
+			jet(-0.4);
+		}
+		else if (this.altitude < 2)
+		{
+			jet(0.4);
+		}
+		else
+		{
+			jet(0);
+		}
+	}
+	else if (this.position.z < p.z + h - 0.2)
+	{
+		jet(0.4);
+	}
+	else
+	{
+		jet(0);
 	}
 }
 
-public void object::motorPower(float direction)
+public void object::motorPower(float dir)
 {
-	float dir,speed,turn;
-	dir = direction;
-	if (abs(dir) < 5) dir = 0;
+	float speed,turn;
 	speed = 1 - abs(dir)/180;
 	turn = dir / 180;
 	motor(speed - turn, speed + turn);
@@ -1634,19 +1671,13 @@ public void object::fly(point p)
 {
 	SatCom com();
 	
-	float dir; // direction of point p from bot
-	float dis; // distance of point p from bot
-	float dif; // difference in altitude of point p & bot (relative to sea-level)
-	float ang; // flying angle must be -20 degrees favorable
+	object root, o;
+	float dir;
 	
-	float j;
-	float speed,turn;
-	point hit,left,right;
-	object root,o;
-	
-	if (this.altitude < 1)
+	if (this.pitch < -40 || this.pitch > 40)
 	{
-		jet(0.5);
+		Message("Avoiding obstacle");
+		avoidStuck();
 	}
 	
 	if (com.detectedGraviPlant)
@@ -1657,38 +1688,19 @@ public void object::fly(point p)
 			dir = direction(root.position);
 			if (distance2d(this.position,root.position) <= com.safeRoot && -60 < dir && dir < 60)
 			{
-				checkEnemyThreat();
-				dir = direction(root.position);
-				if (dir >= 0)
-				{
-					dir += 180;
-				}
-				else
-				{
-					dir -= 180;
-				}
 				turn(dir);
-				Message("Too close to GraviPlant! Retreating...");
 				while (distance2d(this.position,root.position) <= com.safeRoot)
 				{
-					jet(0.5);
-					motor(0.8,0.8);
-					if (this.temperature > com.temperatureThreshold)
-					{
-						gotoSafeLZ();
-						return;
-					}
+					motor(-1,-1);
+					checkEnemyThreat();
 				}
-				return;
-			}
-			else
-			{
-				motorPower(direction(p));
-				return;
+				turn(90);
+				motor(1,1);
+				wait(2);
 			}
 		}
 	}
-	
+	/*
 	o = radar(SpaceShip,0,30,com.safeRoot,com.safeAnt);
 	if (o != null)
 	{
@@ -1705,12 +1717,12 @@ public void object::fly(point p)
 		motorPower(dir);
 		return;
 	}
-	
-	o = radar(com.ALL_BOTS,0,30,com.safeRoot,com.safeAnt);
-	if (o != null)
+	*/
+	o = radar(com.ALL_BOTS,0,20,5,45);
+	if (o != null && abs(o.position.z - this.position.z) < 0.5)
 	{
-		dir = 25;
-		motorPower(dir);
+		Message("Bot is ahead, avoiding collision");
+		motorPower(30);
 		return;
 	}
 	
@@ -1795,8 +1807,7 @@ public void object::fly(object o)
 	SatCom com();
 	com.returnCode = 0;
 	
-	point p,last;
-	int i;
+	point p;
 	
 	if (o == null)
 	{
@@ -1807,10 +1818,7 @@ public void object::fly(object o)
 	
 	p = o.position;
 	turn(direction(p));
-	jet(1);
-	wait(0.2);
-	i = 0;
-	last = this.position;
+	
 	while (o != null && distance2d(this.position,p) > 5 && distance2d(this.position,o.position) > 5)
 	{
 		if (this.temperature > com.temperatureThreshold)
@@ -1818,23 +1826,7 @@ public void object::fly(object o)
 			gotoSafeLZ();
 		}
 		
-		i++;
 		fly(p);
-		if (isStuck(last))
-		{
-			if (i > 10)
-			{
-				Message("Avoiding obstacle");
-				avoidStuck();
-				i = 0;
-				last = this.position;
-			}
-		}
-		else
-		{
-			i = 0;
-			last = this.position;
-		}
 		if (this.altitude < 2)
 		{
 			break;
@@ -1846,28 +1838,6 @@ public void object::fly(object o)
 	{
 		jet(-0.8);
 	}
-}
-
-public bool object::isStuck(point last)
-{
-	SatCom com();
-	bool atStuckPoint = false;
-	object o;
-	
-	//o = radar(Any,0,360,0,3);
-	//if ((abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05) || radar(Any,0,360,0,2) != null || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
-	//if ((abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05) || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
-	//if (distance2d(this.position,last) <= 0.05 || radar(Any,0,360,0,2) != null || topo(aheadPoint(1.5)) > this.position.z + 0.5 || radar(BotFactory,0,360,0,5) != null || onSpaceShipCone() || distance2d(this.position,com.spaceShip.position) < 1.8)
-	//if (distance2d(this.position,last) <= 0.05)
-	//if (abs(this.velocity.x) < 0.05 && abs(this.velocity.y) < 0.05 && abs(this.velocity.z) < 0.05)
-	//Message("this.velocity.x,y "+this.velocity.x+", "+this.velocity.y);
-	//if (abs(this.velocity.x) < 0.08 && abs(this.velocity.y) < 0.08 && o != null)
-	if ((abs(this.velocity.x) < 0.08 && abs(this.velocity.y) < 0.08) || this.pitch < -40 || this.pitch > 40)
-	{
-		atStuckPoint = true;
-	}
-	
-	return atStuckPoint;
 }
 
 public bool object::onSpaceShipCone()
@@ -5302,13 +5272,10 @@ public void object::airAttack(object o,float radius)
 	object enemy,root,center;
 	float dir,dis2Base,dis2Enemy,detectRange;
 	point p,last,start,left,right;
-	int i;
 	
 	center = o;
 	detectRange = radius;
 	
-	i = 0;
-	last = this.position;
 	while (true)
 	{
 		checkSelfStatus();
@@ -5388,23 +5355,7 @@ public void object::airAttack(object o,float radius)
 				enemy = radar(com.ants);
 			}
 			
-			i++;
 			moveAndDestroy(enemy);
-			if (isStuck(last))
-			{
-				if (i > 10)
-				{
-					Message("Avoiding obstacle");
-					avoidStuck();
-					i = 0;
-					last = this.position;
-				}
-			}
-			else
-			{
-				i = 0;
-				last = this.position;
-			}
 		}
 		else
 		{
@@ -5464,8 +5415,7 @@ public void object::airGuard(object center, float radius)
 	SatCom com();
 	object enemy,root;
 	float dir,dis2Base,dis2Enemy,detectRange;
-	point p,last,start,left,right;
-	int i;
+	point p,start,left,right;
 	
 	if (center == null)
 	{
@@ -5476,8 +5426,6 @@ public void object::airGuard(object center, float radius)
 	start = getRestPoint(center,radius/2);
 	detectRange = 10000;
 	
-	i = 0;
-	last = this.position;
 	while (true)
 	{
 		checkSelfStatus();
@@ -5540,23 +5488,7 @@ public void object::airGuard(object center, float radius)
 				}
 			}
 			
-			i++;
 			moveAndDestroy(enemy);
-			if (isStuck(last))
-			{
-				if (i > 10)
-				{
-					Message("Avoiding obstacle");
-					avoidStuck();
-					i = 0;
-					last = this.position;
-				}
-			}
-			else
-			{
-				i = 0;
-				last = this.position;
-			}
 			
 			if (found(PowerCaptor))
 			{
@@ -5965,6 +5897,8 @@ public void object::escapeMountain(point botPoint, point target)
 	Message("Searching for path...");
 	float t = abstime();
 	ipf(10000);
+	//point pathRawPoints[] = searchEscapeMountainPath(this.position, target);
+	//point pathPoints[] = simplifyPath(pathRawPoints,0.5);
 	point pathPoints[] = searchEscapeMountainPath(this.position, target);
 	ipf(100);
 	int pathLength = sizeof(pathPoints);
@@ -6082,5 +6016,76 @@ public void object::PrintDebug()
 	handle.writeln("=== END DEBUG BUFFER ===");
 	handle.close();
 	message("Debug buffer written to: files/" + filename);
+}
+
+// Helper: distance from point p to the line segment a-b
+public float distanceToLine(point p, point a, point b)
+{
+    float dx = b.x - a.x;
+    float dy = b.y - a.y;
+    float dz = b.z - a.z;
+    float len2 = dx*dx + dy*dy + dz*dz;
+    if (len2 == 0) return distance(p, a);
+    
+    float t = ((p.x - a.x)*dx + (p.y - a.y)*dy + (p.z - a.z)*dz) / len2;
+    if (t < 0) return distance(p, a);
+    if (t > 1) return distance(p, b);
+    
+    point proj;
+    proj.x = a.x + t*dx;
+    proj.y = a.y + t*dy;
+    proj.z = a.z + t*dz;
+    return distance(p, proj);
+}
+
+// Simplify the path by removing redundant points.
+public point[] simplifyPath(point[] path, float epsilon)
+{
+    int n = sizeof(path);
+    if (n <= 2) 
+    {
+        point result[n];
+        for (int i = 0; i < n; i++) result[i] = path[i];
+        return result;
+    }
+    
+    // Work on a copy of the path
+    point work[n];
+    for (int i = 0; i < n; i++) work[i] = path[i];
+    
+    bool changed;
+    int currentLen = n;
+    point temp[n]; // temporary storage (max size = original length)
+    
+    do
+    {
+        changed = false;
+        int newCount = 0;
+        temp[newCount++] = work[0];   // always keep first point
+        
+        for (int i = 1; i < currentLen - 1; i++)
+        {
+            // Remove point i if it's close to the line between its neighbours
+            if (distanceToLine(work[i], work[i-1], work[i+1]) <= epsilon)
+            {
+                changed = true;        // mark that we removed something
+            }
+            else
+            {
+                temp[newCount++] = work[i];
+            }
+        }
+        temp[newCount++] = work[currentLen - 1]; // always keep last point
+        
+        // Copy back for next iteration
+        for (int i = 0; i < newCount; i++) work[i] = temp[i];
+        currentLen = newCount;
+        
+    } while (changed); // repeat until no more points are removed
+    
+    // Build the result array of exactly the simplified length
+    point result[currentLen];
+    for (int i = 0; i < currentLen; i++) result[i] = work[i];
+    return result;
 }
 
