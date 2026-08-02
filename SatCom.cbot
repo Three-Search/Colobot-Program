@@ -1555,11 +1555,11 @@ public void object::jetPower(point p)
 	
 	if (this.position.z > p.z + h + 0.1)
 	{
-		if (this.altitude > 2)
+		if (this.altitude > 0.5)
 		{
 			jet(-0.4);
 		}
-		else if (this.altitude < 2)
+		else if (this.altitude < 0.5)
 		{
 			jet(0.4);
 		}
