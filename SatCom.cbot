@@ -222,8 +222,9 @@ public class SatCom
 	static int[] ants;
 	static int[] roots;
 	static int[] enemies;
-	static bool hasSpaceShip = false;
+	static bool detectedSpaceShip = false;
 	static bool detectedGraviPlant = false;
+	static bool detectedQuartz = false;
 	static bool detectedAnt = false;
 	static bool detectedSpider = false;
 	static bool detectedWorm = false;
@@ -313,45 +314,21 @@ public class SatCom
 			builderBotCategory = LeggedBuilder;
 		}
 		
-		if (radar(GraviPlant) != null)
-		{
-			detectedGraviPlant = true;
-		}
-		if (radar(AlienAnt) != null)
-		{
-			detectedAnt = true;
-		}
-		if (radar(AlienSpider) != null)
-		{
-			detectedSpider = true;
-		}
-		if (Radar(AlienWorm) != null)
-		{
-			detectedWorm = true;
-		}
-		if (Radar(AlienWasp) != null)
-		{
-			detectedWasp = true;
-		}
-		if (radar(AlienEgg) != null)
-		{
-			detectedEgg = true;
-		}
-		if (radar(GreenMushroom) != null)
-		{
-			detectedGreenMushroom = true;
-		}
-		if (radar(AlienQueen) != null)
-		{
-			detectedQueen = true;
-		}
+		if (radar(GraviPlant) != null) detectedGraviPlant = true;
+		if (radar(AlienAnt) != null) detectedAnt = true;
+		if (radar(AlienSpider) != null)	detectedSpider = true;
+		if (Radar(AlienWorm) != null) detectedWorm = true;
+		if (Radar(AlienWasp) != null) detectedWasp = true;
+		if (radar(AlienEgg) != null) detectedEgg = true;
+		if (radar(GreenMushroom) != null) detectedGreenMushroom = true;
+		if (radar(AlienQueen) != null) detectedQueen = true;
 		
 		chargeQueue = new Queue(1001);
 		repairQueue = new Queue(1001);
 		
 		me = radar(Me);
 		spaceShip = radar(SpaceShip);
-		if (spaceShip != null) hasSpaceShip = true;
+		if (spaceShip != null) detectedSpaceShip = true;
 		botFactory = radar(BotFactory);
 		researchCenter = radar(ResearchCenter);
 		repairCenter = radar(RepairCenter);
@@ -388,6 +365,7 @@ public class SatCom
 		{
 			quartz[nr++] = i;
 		}
+		if (radar(quartz) != null) detectedQuartz = true;
 		
 		nr = 0;
 		ants[nr++] = AlienAnt;
@@ -1245,7 +1223,7 @@ public float object::distance2SpaceShip(point p)
 {
 	SatCom com();
 	
-	if (com.hasSpaceShip)
+	if (com.detectedSpaceShip)
 	{
 		return distance2d(p,com.spaceShip.position);
 	}
@@ -1463,6 +1441,7 @@ public void object::crawl(point p)
 {
 	float dir;
 	point sensor;
+	object o;
 	
 	for (int i = 30; i > 0; i--)
 	{
@@ -1483,6 +1462,12 @@ public void object::crawl(point p)
 	motor(1 - dir/180,1 + dir/180);
 	
 	cacheGrid();
+	
+	if (isStuck())
+	{
+		Message("Avoiding obstacle");
+		avoidStuck();
+	}
 }
 
 public void object::jetPower(object target)
@@ -1715,6 +1700,29 @@ public void object::fly2Wasp(object target)
 	cacheGrid();
 }
 
+public bool object::isStuck()
+{
+	object o;
+	
+	if (this.category == WingedShooter || this.category == WingedOrgaShooter)
+	{
+		if (this.pitch < -40 || this.pitch > 40)
+		{
+			return true;
+		}
+	}
+	
+	if (this.velocity.x < 0.03 && this.velocity.y < 0.03)
+	{
+		o = radar(Any,0,120,0,5);
+		if (o != null && abs(this.position.z - o.position.z) < 1 && o.category != 50 && o.category != 51 && o.category != 52)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 public void object::fly(point p)
 {
 	SatCom com();
@@ -1722,20 +1730,15 @@ public void object::fly(point p)
 	object root, o;
 	float dir;
 	
-	if (this.pitch < -40 || this.pitch > 40)
+	jetPower(p);
+	motorPower(direction(p));
+	
+	cacheGrid();
+	
+	if (isStuck())
 	{
 		Message("Avoiding obstacle");
 		avoidStuck();
-	}
-	
-	if (this.velocity.x < 0.03 && this.velocity.y < 0.03)
-	{
-		o = radar(Any,0,90,0,5);
-		if (o != null && abs(this.position.z - o.position.z) < 1)
-		{
-			Message("Avoiding obstacle");
-			avoidStuck();
-		}
 	}
 	
 	if (com.detectedGraviPlant)
@@ -1775,12 +1778,7 @@ public void object::fly(point p)
 		motorPower(dir);
 		return;
 	}
-	*/
-	
-	jetPower(p);
-	motorPower(direction(p));
-	
-	cacheGrid();
+	*/	
 }
 
 public void object::fly2p(point p)
@@ -4790,6 +4788,16 @@ public bool object::checkLOS(point bot_position, point ant_position)
 		p.y = bot_position.y + dy * t;
 		p.z = bot_position.z + dz * t;
 		if (topo(p) > p.z + clearance) return false;
+	}
+	
+	if (com.detectedQuartz)
+	{
+		object q = search(com.quartz,ant_position,0,5);
+		if (q != null && distance2d(bot_position, q.position) + distance2d(q.position, ant_position) - distance2d(bot_position, ant_position) < 0.5)
+		{
+			Message("LOS is blocked by Quartz");
+			return false;
+		}
 	}
 	return true;
 }
