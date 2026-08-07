@@ -1480,6 +1480,7 @@ public void object::jetPower(object target)
 		return;
 	}
 	
+	// adjust bot altitude same as wasp altitude
 	if (this.position.z > target.position.z + 2)
 	{
 		if (this.altitude > 2)
@@ -1502,7 +1503,7 @@ public void object::jetPower(object target)
 	else
 	{
 		jet(0);
-	}
+	}	
 }
 
 public int object::jetPower(point p)
@@ -1545,47 +1546,42 @@ public int object::jetPower(point p)
 		h = dis*tan20;
 	}
 	
-	if (this.position.z > p.z + h)
+	if (this.position.z < p.z - h)
 	{
-		if (dis <= com.attackRange)
-		{
-			if (this.position.z > 2)
-			{
-				jet(-0.8);
-				return 1;
-			}
-			else
-			{
-				jet(0.8);
-				return 0;
-			}
-		}
-		else
-		{
-			if (this.altitude > 2)
-			{
-				jet(-0.8);
-				return 0;
-			}
-			else
-			{
-				jet(0.8);
-				return 0;
-			}
-		}
-	}
-	else if (this.position.z < p.z - h)
-	{
-		jet(0.8);
+		jet(1);
 		return 1;
 	}
 	
-	if (dis <= com.attackRange)
+	if (this.position.z < p.z)
 	{
-		if (this.position.z < p.z + 2 && this.altitude > 0)
+		jet(1);
+		return 0;
+	}
+	
+	// optimal height
+	if (p.z <= this.position.z && this.position.z <= p.z + h)
+	{
+		if (dis <= com.attackRange)
 		{
-			jet(0.8);
-			return 1;
+			// if flying on water
+			if (getNodeZ(getNodeIndex(this.position)) < 0)
+			{
+				if (this.position.z < p.z + 4)
+				{
+					jet(0.8);
+					return 0;
+				}
+				else
+				{
+					jet(0.4);
+					return 0;					
+				}
+			}
+			else // on land
+			{
+				jet(0.1);
+				return 0;
+			}
 		}
 		else
 		{
@@ -1594,7 +1590,62 @@ public int object::jetPower(point p)
 		}
 	}
 	
-	jet(0.1);
+	if (this.position.z > p.z + h)
+	{
+		if (dis <= com.attackRange)
+		{
+			// if flying on water
+			if (getNodeZ(getNodeIndex(this.position)) < 0)
+			{
+				if (this.position.z > 2)
+				{
+					jet(-0.4);
+					return 0;
+				}
+				else
+				{
+					jet(0.1);
+					return 0;					
+				}
+			}
+			else // on land
+			{
+				jet(-0.4);
+				return 0;
+			}
+		}
+		else // if far way
+		{
+			if (getNodeZ(getNodeIndex(this.position)) < 0)
+			{
+				if (this.position.z > 4)
+				{
+					jet(-0.4);
+					return 0;
+				}
+				else
+				{
+					jet(0.1);
+					return 0;
+				}
+			}
+			else // on land
+			{
+				if (this.altitude > 2)
+				{
+					jet(-0.4);
+					return 0;
+				}
+				else
+				{
+					jet(0.1);
+					return 0;
+				}
+			}
+		}
+	}
+	
+	jet(0.8);
 	return 0;
 }
 
@@ -1951,6 +2002,34 @@ public object[] object::RadarAll(int c)
 		}
 	}
 	return o;
+}
+
+// Move sideways by distance meters.
+// Positive = right, negative = left.
+// Final heading equals initial heading.
+public void object::flySideways(float distance)
+{
+    int dir = (distance > 0) ? 1 : -1;
+    float absDist = abs(distance);
+
+    // Tune these for your bot
+    float forwardThrust = 0.8;      // forward speed
+    float diffThrust = 0.4;         // differential (sharpness of turn)
+    float baseTime = 0.06;          // seconds per meter (empirical)
+
+    float phaseDuration = absDist * baseTime;
+
+    // Phase 1: curve to the side
+    motor(forwardThrust + dir * diffThrust,
+          forwardThrust - dir * diffThrust);
+    wait(phaseDuration);
+
+    // Phase 2: curve back to cancel heading change
+    motor(forwardThrust - dir * diffThrust,
+          forwardThrust + dir * diffThrust);
+    wait(phaseDuration);
+
+    motor(0, 0);
 }
 
 public void object::avoidStuck()
@@ -3801,7 +3880,7 @@ public void object::moveAndDestroy(object target)
 {
 	SatCom com();
 	
-	float dis;
+	float dis, side;
 	int i;
 	point p,hit,left,right;
 	bool los = false;
@@ -3816,14 +3895,15 @@ public void object::moveAndDestroy(object target)
 		fly(target.position);
 	}
 	
-	if (target == null) return;
 	dis = distance(this.position,target.position);
-	if (target.category == AlienWasp && dis < com.safeQueen)
+	if (target.category == AlienWasp)
 	{
+		if (dis > com.safeQueen) return;
 		motor(0,0);
-		WaspAim(target);
+		aimAndFire(target);
 		return;
 	}
+	
 	if (dis > com.attackRange)
 	{
 		if (target.category == AlienWasp) return;
@@ -3839,13 +3919,14 @@ public void object::moveAndDestroy(object target)
 		if (!checkLOS(target))
 		{
 			los = false;
-			for (i = 1; i < 10; i++)
+			side = 5;
+			for (i = 1; i < 5; i++)
 			{
 				left = leftPoint(5*i);
 				left.z = this.position.z;
 				if (checkLOS(left,target.position) && topo(left) < left.z)
 				{
-					p = left;
+					side = -5*i;
 					los = true;
 					break;
 				}
@@ -3853,20 +3934,21 @@ public void object::moveAndDestroy(object target)
 				right.z = this.position.z;
 				if (checkLOS(right,target.position) && topo(right) < right.z)
 				{
-					p = right;
+					side = 5*i;
 					los = true;
 					break;
 				}
 			}
+			
 			if (los)
 			{
-				// Found new position with LOS, fly to that position and return to try again. 
-				fly(p);
-				return;
+				// Found new position with LOS, fly sideways to that position and fire.
+				Message("Found new position with clear line of sight, flying to that position");
+				flySideways(side);
 			}
 			else
 			{
-				// Could not find new position with LOS, fly to side with lower topo and return to try again. 
+				// Could not find new position with LOS, fly to side with lower topo and return to try again.
 				if (topo(left) < topo(right))
 				{
 					Message("Line of sight blocked, fly to left side");
@@ -3887,13 +3969,6 @@ public void object::moveAndDestroy(object target)
 
 public void object::aimAndFire(object target)
 {
-	SatCom com();
-	
-	if (target == null || target.dead)
-	{
-		return;
-	}
-	
 	if (category == PhazerShooter)
 	{
 		PhazerAim(target);
@@ -3908,14 +3983,7 @@ public void object::aimAndFire(object target)
 	
 	if (category == WingedShooter || category == WingedOrgaShooter)
 	{
-		if (target.category == AlienWasp)
-		{
-			WaspAim(target);
-		}
-		else
-		{
-			AirAim(target);
-		}
+		AirAim(target);
 		return;
 	}
 }
@@ -4498,7 +4566,7 @@ public void object::LandAim(object target)
 	}
 }
 
-public void object::AirAim(object target)
+public void object::Air2LandAim(object target)
 {
 	SatCom com();
 	
@@ -4541,13 +4609,13 @@ public void object::aimat(point p)
 	aim(-aimpitch,-aimangle);
 }
 
-public void object::WaspAim(object target)
+public void object::AirAim(object target)
 {
 	SatCom com();
 	
 	if (target == null || target.dead) return;
 	
-	float scanRange = com.safeQueen; // 80m for Wasps
+	float scanRange = (target.category == AlienWasp ? com.safeQueen : com.attackRange); // 80m for Wasps
 	
 	// === PLATFORM PARAMETERS ===
 	float minAngle = -20;
@@ -4596,10 +4664,9 @@ public void object::WaspAim(object target)
 	oldHeight = target.position.z - this.position.z;
 	oldTime = abstime();
 	
-	it = oldRange / v0;
-	fireTime = abstime() + 0.2;
-	elapsedTime = abstime() + 5;
-	
+	it = oldRange / v0; // initial estimate for intercept time
+	fireTime = abstime() + 0.2; // don't fire for 0.5 seconds (first track target)
+	elapsedTime = abstime() + 5; // only track no wasp target maximun 5 seconds
 	while (true)
 	{
 		if (this.temperature > com.temperatureThreshold)
@@ -4614,6 +4681,14 @@ public void object::WaspAim(object target)
 			return;
 		}
 		
+		if (target.category != AlienWasp && elapsedTime < abstime())
+		{
+			Message("Line of sight blocked, try other position");
+			avoidStuck();
+			errmode(1);
+			return;		
+		}
+		
 		// === CHECK FOR NEARER ENEMIES ===
 		current = radar(com.ants, 0, 360, 0, scanRange);
 		if (current == null)
@@ -4624,14 +4699,7 @@ public void object::WaspAim(object target)
 		
 		if (current != target)
 		{
-			if (checkLOS(current.position))
-			{
-				aimat(current.position);
-				fire(0.2);
-				Message("WaspAim: New enemy nearer, switching target");
-			}
-			errmode(1);
-			return;
+			target = current;
 		}
 		
 		// === FAST ALTITUDE OPTIMIZATION (No Trig!) ===
@@ -4723,8 +4791,18 @@ public void object::WaspAim(object target)
 		if (motorOutput < -1) motorOutput = -1;
 		motor(-motorOutput, motorOutput);
 		
+		if (target.category != AlienWasp)
+		{
+			// check LOS before fire, if no LOS keep tracking target movements
+			if (!checkLOS(target.position))
+			{
+				cacheGrid();
+				continue;
+			}
+		}
+		
 		// === FIRE (Burst) ===
-		if (range <= 20 || (range <= com.attackRange && a >= minAngle && a <= maxAngle && abs(azimuth) <= 3 && fireTime < abstime()))
+		if ((abs(height) <= 7 && range <= 20) || (range <= com.attackRange && a >= minAngle && a <= maxAngle && abs(azimuth) <= 3 && fireTime < abstime()))
 		{
 			if (target != null && !target.dead)
 			{
@@ -4733,9 +4811,10 @@ public void object::WaspAim(object target)
 				{
 					fire(0.05);
 					wait(burstInterval);
+					if (target == null || target.dead) break;
 				}
 				fireTime = abstime() + it + 0.2;
-				Message("WaspAim: Burst fire, range " + range);
+				Message("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 			}
 		}
 	}
