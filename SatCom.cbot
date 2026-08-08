@@ -1506,6 +1506,25 @@ public void object::jetPower(object target)
 	}	
 }
 
+public bool object::isOnWater(float d)
+{
+	int center,ahead,left,right;
+	
+	center = getNodeIndex(this.position);
+	if (getNodeZ(center) < 0) return true;
+	
+	ahead = getNodeIndex(aheadPoint(d));
+	if (getNodeZ(ahead) < 0) return true;
+	
+	left = getNodeIndex(leftPoint(d));
+	if (getNodeZ(left) < 0) return true;
+	
+	right = getNodeIndex(rightPoint(d));
+	if (getNodeZ(right) < 0) return true;
+	
+	return false;
+}
+
 public int object::jetPower(point p)
 {
 	SatCom com();
@@ -1564,17 +1583,18 @@ public int object::jetPower(point p)
 		if (dis <= com.attackRange)
 		{
 			// if flying on water
-			if (getNodeZ(getNodeIndex(this.position)) < 0)
+			if (isOnWater(10))
 			{
-				if (this.position.z < p.z + 4)
+				if (this.position.z < p.z + 3)
 				{
-					jet(0.8);
+					jet(0.4);
+					Debug("Optimal height, within attack range, flying on water. if (this.position.z < p.z + 3) " + this.position.z + ", p.z " + p.z);
 					return 0;
 				}
 				else
 				{
-					jet(0.4);
-					return 0;					
+					jet(0.1);
+					return 0;
 				}
 			}
 			else // on land
@@ -1595,11 +1615,17 @@ public int object::jetPower(point p)
 		if (dis <= com.attackRange)
 		{
 			// if flying on water
-			if (getNodeZ(getNodeIndex(this.position)) < 0)
+			if (isOnWater(10))
 			{
-				if (this.position.z > 2)
+				if (this.position.z > p.z + h && this.position.z > p.z + 4)
 				{
 					jet(-0.4);
+					Debug("Bot is higher than optimal height, within attack range, flying on water. if (this.position.z > p.z + h && this.position.z > p.z + 4) " + this.position.z + ", p.z " + p.z + ", h " + h);
+					return 0;
+				}
+				else if (this.position.z < p.z + 3)
+				{
+					jet(0.4);
 					return 0;
 				}
 				else
@@ -1616,11 +1642,18 @@ public int object::jetPower(point p)
 		}
 		else // if far way
 		{
-			if (getNodeZ(getNodeIndex(this.position)) < 0)
+			// if flying on water
+			if (isOnWater(10))
 			{
-				if (this.position.z > 4)
+				if (this.position.z > p.z + h && this.position.z > 4)
 				{
 					jet(-0.4);
+					Debug("Bot is higher than optimal height, not within attack range, flying on water. if (this.position.z > p.z + h && && this.position.z > 4) " + this.position.z + ", p.z " + p.z + ", h" + h);
+					return 0;
+				}
+				else if (this.position.z < p.z + 3)
+				{
+					jet(0.4);
 					return 0;
 				}
 				else
