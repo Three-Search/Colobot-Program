@@ -4527,27 +4527,8 @@ public void object::aimAndFire(object target)
 					if (target == null || target.dead) break;
 				}
 				fireTime = abstime() + it + 0.2; // wait until round hit (or not)
-				Message("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
+				//Message("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 			}
-		}
-		else if
-		(
-		(
-		(this.category != WingedShooter && this.category != WingedOrgaShooter)
-		|| abs(height) <= range*0.35
-		)
-		&& range <= com.attackRange
-		)
-		{
-			if (target != null && !target.dead && fireTime < abstime())
-			{
-				if (aimat(target.position))
-				{
-					fire(0.05);
-					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-					Message("Burst fired with emergency aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
-				}
-			}			
 		}
 	}
 }
