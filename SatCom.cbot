@@ -4530,26 +4530,29 @@ public void object::aimAndFire(object target)
 				Message("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 			}
 		}
-		else if (range <= com.attackRange)
+		else if
+		(
+		(
+		(this.category != WingedShooter && this.category != WingedOrgaShooter)
+		|| abs(height) <= range*0.35
+		)
+		&& range <= com.attackRange
+		)
 		{
 			if (target != null && !target.dead && fireTime < abstime())
 			{
-				// 3-round burst
-				for (int i = 0; i < burstCount; i++)
+				if (aimat(target.position))
 				{
-					aimat(target.position);
 					fire(0.05);
-					wait(burstInterval);
-					if (target == null || target.dead) break;
+					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
+					Message("Burst fired with emergency aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 				}
-				fireTime = abstime() + it + 0.2; // wait until round hit (or not)
-				Message("Burst fired with emergency aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 			}			
 		}
 	}
 }
 
-public void object::aimat(point p)
+public bool object::aimat(point p)
 {
 	turn(direction(p));
 	float dist=distance2d(p,this.position);
@@ -4561,6 +4564,8 @@ public void object::aimat(point p)
 	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
 	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
 	aim(-aimpitch,-aimangle);
+	if (abs(aimpitch) <= 20 && abs(aimangle) <= 40) return true;
+	return false;
 }
 
 public bool object::checkLOS(object target)
