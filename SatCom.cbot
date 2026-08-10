@@ -218,12 +218,13 @@ public class SatCom
 	static string[] CATEGORY_NAMES;
 	
 	static int[] obstacles;
+	static int[] dangerPlants;
 	static int[] quartz;
 	static int[] ants;
 	static int[] roots;
 	static int[] enemies;
 	static bool detectedSpaceShip = false;
-	static bool detectedGraviPlant = false;
+	static bool detectedDangerPlant = false;
 	static bool detectedQuartz = false;
 	static bool detectedAnt = false;
 	static bool detectedSpider = false;
@@ -314,7 +315,6 @@ public class SatCom
 			builderBotCategory = LeggedBuilder;
 		}
 		
-		if (radar(GraviPlant) != null) detectedGraviPlant = true;
 		if (radar(AlienAnt) != null) detectedAnt = true;
 		if (radar(AlienSpider) != null)	detectedSpider = true;
 		if (Radar(AlienWorm) != null) detectedWorm = true;
@@ -359,6 +359,14 @@ public class SatCom
 		{
 			obstacles[nr++] = i;
 		}
+		
+		nr = 0;
+		for (int i = 85; i < 90; i++)
+		{
+			dangerPlants[nr++] = i;
+		}
+		dangerPlants[nr++] = GraviPlant;
+		if (radar(dangerPlants) != null) detectedDangerPlant = true;
 		
 		nr = 0;
 		for (int i = 700; i < 704; i++)
@@ -1353,16 +1361,16 @@ public float object::distance2Ants(point p)
 	}
 }
 
-public float object::distance2GraviPlant(point p)
+public float object::distance2DangerPlant(point p)
 {
 	SatCom com();
 	
-	if (!com.detectedGraviPlant)
+	if (!com.detectedDangerPlant)
 	{
 		return 999;
 	}
 	
-	object o = search(GraviPlant,p);
+	object o = search(com.dangerPlants,p);
 	if (o == null)
 	{
 		return 999;
@@ -1587,7 +1595,7 @@ public int object::jetPower(point p)
 			{
 				if (this.position.z < p.z + 3 && this.position.z < 3)
 				{
-					jet(0.4);
+					jet(0.8);
 					Debug("Optimal height, within attack range, flying on water. if (this.position.z < p.z + 3) " + this.position.z + ", p.z " + p.z);
 					return 0;
 				}
@@ -1625,7 +1633,7 @@ public int object::jetPower(point p)
 				}
 				else if (this.position.z < 3)
 				{
-					jet(0.4);
+					jet(0.8);
 					return 0;
 				}
 				else
@@ -1653,7 +1661,7 @@ public int object::jetPower(point p)
 				}
 				else if (this.position.z < 3)
 				{
-					jet(0.4);
+					jet(0.8);
 					return 0;
 				}
 				else
@@ -1825,10 +1833,10 @@ public void object::fly(point p)
 		avoidStuck();
 	}
 	
-	if (com.detectedGraviPlant)
+	if (com.detectedDangerPlant)
 	{
-		root = radar(GraviPlant,0,360,0,com.safeAnt);
-		if (root != null)
+		root = radar(com.dangerPlants,0,360,0,com.safeAnt);
+		if (root != null && root.category == GraviPlant)
 		{
 			dir = direction(root.position);
 			if (distance2d(this.position,root.position) <= com.safeRoot && -60 < dir && dir < 60)
@@ -1845,24 +1853,6 @@ public void object::fly(point p)
 			}
 		}
 	}
-	/*
-	o = radar(SpaceShip,0,30,com.safeRoot,com.safeAnt);
-	if (o != null)
-	{
-		dir = 25;
-		motorPower(dir);
-		return;
-	}
-	
-	if (distance2d(this.position,com.spaceShip.position) < 2.5)
-	{
-		dir = 25;
-		motor(-1,-1);
-		wait(1);
-		motorPower(dir);
-		return;
-	}
-	*/	
 }
 
 public void object::fly2p(point p)
@@ -1976,7 +1966,7 @@ public void object::fly(object o)
 	}
 	
 	motor(0,0);
-	while (this.altitude > 0)
+	while (this.altitude > 0 && this.position.z > p.z)
 	{
 		jet(-0.8);
 	}
@@ -4045,12 +4035,12 @@ public void object::moveAndDestroy(object target)
 				if (topo(left) < topo(right))
 				{
 					Message("Line of sight blocked, fly to left side");
-					fly(left);
+					flySideways(-20);
 				}
 				else
 				{
 					Message("Line of sight blocked, fly to right side");
-					fly(right);
+					flySideways(20);
 				}
 				return;
 			}
@@ -4659,7 +4649,7 @@ public bool object::isLandingPoint(point p)
 	SatCom com();
 	
 	if (!isFlat(p,com.safeFlatGround)) return false;
-	if (distance2GraviPlant(p) < com.safeRoot) return false;
+	if (distance2DangerPlant(p) < com.safeRoot) return false;
 	if (distance2Spider(p) < com.safeAnt) return false;
 	if (!checkLOS(p)) return false;
 	return true;
@@ -4835,6 +4825,12 @@ public void object::landAndRest(point p)
 	float d = 1.5;
 	
 	plantFlag(p,52); // Yellow Circle
+	
+	while (this.position.z < p.z + 2)
+	{
+		jet(1);
+		wait(0.01);
+	}
 	
 	fly2p(p);
 	while (this.temperature > 0)
@@ -5172,9 +5168,9 @@ public void object::airGuard(object center, float radius)
 				continue;
 			}
 			
-			if (com.detectedGraviPlant)
+			if (com.detectedDangerPlant)
 			{
-				root = search(GraviPlant,enemy.position,0,com.attackRange);
+				root = search(com.dangerPlants,enemy.position,0,com.attackRange);
 				if (root != null)
 				{
 					if (distance2d(this.position,root.position) > com.safeAnt && distance2d(this.position,root.position) < distance2d(this.position,enemy.position))
