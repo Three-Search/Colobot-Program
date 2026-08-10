@@ -1585,7 +1585,7 @@ public int object::jetPower(point p)
 			// if flying on water
 			if (isOnWater(10))
 			{
-				if (this.position.z < p.z + 3)
+				if (this.position.z < p.z + 3 && this.position.z < 3)
 				{
 					jet(0.4);
 					Debug("Optimal height, within attack range, flying on water. if (this.position.z < p.z + 3) " + this.position.z + ", p.z " + p.z);
@@ -1593,19 +1593,19 @@ public int object::jetPower(point p)
 				}
 				else
 				{
-					jet(0.1);
+					jet(0.05);
 					return 0;
 				}
 			}
 			else // on land
 			{
-				jet(0.1);
+				jet(0.05);
 				return 0;
 			}
 		}
 		else
 		{
-			jet(0.1);
+			jet(0.05);
 			return 0;
 		}
 	}
@@ -1950,6 +1950,15 @@ public void object::fly(object o)
 	}
 	
 	p = o.position;
+	// check if landing on slope
+	if (flatground(this.position,0.1) < 0.1)
+	{
+		while (this.altitude < 2)
+		{
+			jet(1);
+			wait(0.01);
+		}
+	}
 	turn(direction(p));
 	
 	while (o != null && distance2d(this.position,p) > 5 && distance2d(this.position,o.position) > 5)
