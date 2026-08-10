@@ -1617,20 +1617,20 @@ public int object::jetPower(point p)
 			// if flying on water
 			if (isOnWater(10))
 			{
-				if (this.position.z > p.z + h && this.position.z > p.z + 4)
+				if (this.position.z > p.z + h && this.position.z > p.z + 4 && this.position.z > 4)
 				{
 					jet(-0.4);
 					Debug("Bot is higher than optimal height, within attack range, flying on water. if (this.position.z > p.z + h && this.position.z > p.z + 4) " + this.position.z + ", p.z " + p.z + ", h " + h);
 					return 0;
 				}
-				else if (this.position.z < p.z + 3)
+				else if (this.position.z < 3)
 				{
 					jet(0.4);
 					return 0;
 				}
 				else
 				{
-					jet(0.1);
+					jet(0.05);
 					return 0;					
 				}
 			}
@@ -1651,14 +1651,14 @@ public int object::jetPower(point p)
 					Debug("Bot is higher than optimal height, not within attack range, flying on water. if (this.position.z > p.z + h && && this.position.z > 4) " + this.position.z + ", p.z " + p.z + ", h" + h);
 					return 0;
 				}
-				else if (this.position.z < p.z + 3)
+				else if (this.position.z < 3)
 				{
 					jet(0.4);
 					return 0;
 				}
 				else
 				{
-					jet(0.1);
+					jet(0.05);
 					return 0;
 				}
 			}
@@ -1671,7 +1671,7 @@ public int object::jetPower(point p)
 				}
 				else
 				{
-					jet(0.1);
+					jet(0.05);
 					return 0;
 				}
 			}
@@ -4526,16 +4526,6 @@ public void object::aimAndFire(object target)
 			}
 			fireTime = abstime() + it + 0.2; // wait until round hit (or not)
 			Debug("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
-		}
-		else
-		{
-			if (target != null && !target.dead && fireAt(target.position))
-			{
-				if (a < minAngle) aim(minAngle, 0);
-				else if (a > maxAngle) aim(maxAngle, 0);
-				else aim(a, 0); // weapon elevation
-				fireTime = abstime() + it + 0.1; // wait until round hit (or not)
-			}
 		}
 	}
 }
