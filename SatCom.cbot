@@ -4525,21 +4525,25 @@ public void object::aimAndFire(object target)
 				wait(burstInterval);
 			}
 			fireTime = abstime() + it + 0.2; // wait until round hit (or not)
-			Message("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
+			Debug("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 		}
 		else
 		{
-			if (target != null && !target.dead && aimat(target.position))
+			if (target != null && !target.dead && fireAt(target.position))
 			{
-				fire(0.05);
-				Message("Fired with emergency aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
+				if (a < minAngle) aim(minAngle, 0);
+				else if (a > maxAngle) aim(maxAngle, 0);
+				else aim(a, 0); // weapon elevation
+				fireTime = abstime() + it + 0.1; // wait until round hit (or not)
 			}
 		}
 	}
 }
 
-public bool object::aimat(point p)
+public bool object::fireAt(point p)
 {
+	SatCom com();
+	
 	turn(direction(p));
 	float dist=distance2d(p,this.position);
 	float height=this.position.z-p.z;
@@ -4549,8 +4553,13 @@ public bool object::aimat(point p)
 	//here we rotate ipitch and iangle by roll to compensate for that part of the scheme
 	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
 	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
-	aim(-aimpitch,-aimangle);
-	if (abs(aimpitch) <= 20 && abs(aimangle) <= 40) return true;
+	if (abs(aimpitch) <= com.maxAimAngle && abs(aimangle) <= 40)
+	{
+		aim(-aimpitch,-aimangle);
+		fire(0.05);
+		Debug("Fired with emergency aim: angle " + aimpitch + ", azimuth " + aimangle + ", range " + dist);
+		return true;
+	}
 	return false;
 }
 
