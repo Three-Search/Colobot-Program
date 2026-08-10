@@ -4372,7 +4372,7 @@ public void object::aimAndFire(object target)
 		if (this.temperature > com.temperatureThreshold)
 		{
 			errmode(1);
-			return;		
+			return;
 		}
 		
 		if (target == null || target.dead)
@@ -4502,8 +4502,8 @@ public void object::aimAndFire(object target)
 		if (motorOutput < -1) motorOutput = -1;
 		motor(-motorOutput, motorOutput); // apply turn rate
 		
-		// check LOS before fire, if no LOS keep tracking target movements
-		if (!checkLOS(target))
+		// check range, fireTime and LOS before fire, if all conditions are not meet, keep tracking target movements
+		if (range > com.attackRange || fireTime > abstime() || !checkLOS(target))
 		{
 			cacheGrid();
 			continue;
@@ -4512,22 +4512,27 @@ public void object::aimAndFire(object target)
 		// Fired with advanced aim if target is within weapon envelope
 		if
 		(
-		(this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20)
+		(abs(a) <= maxAngle && abs(azimuth) <= 2)
+		|| (this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20)
 		|| (abs(height) <= 7 && range <= 20)
-		|| (range <= com.attackRange && abs(a) <= maxAngle && abs(azimuth) <= 2)
 		)
 		{
-			if (target != null && !target.dead && fireTime < abstime())
+			// 3-round burst
+			for (int i = 0; i < burstCount; i++)
 			{
-				// 3-round burst
-				for (int i = 0; i < burstCount; i++)
-				{
-					fire(0.05);
-					wait(burstInterval);
-					if (target == null || target.dead) break;
-				}
-				fireTime = abstime() + it + 0.2; // wait until round hit (or not)
-				//Message("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
+				if (target == null || target.dead) break;
+				fire(0.05);
+				wait(burstInterval);
+			}
+			fireTime = abstime() + it + 0.2; // wait until round hit (or not)
+			Message("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
+		}
+		else
+		{
+			if (target != null && !target.dead && aimat(target.position))
+			{
+				fire(0.05);
+				Message("Fired with emergency aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 			}
 		}
 	}
