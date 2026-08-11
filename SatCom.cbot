@@ -1,5 +1,5 @@
 /*
-10 August 2026
+12 August 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -251,7 +251,6 @@ public class SatCom
 	static float sqrt3 = 1.73205;
 	static float sqrt2 = 1.41421;
 	static float PI = 3.1416;
-	static int sign = 1; // this is used to time with -1 to have alternative signs of -1 and 1
 	
 	static object me;
 	static object spaceShip;
@@ -1039,6 +1038,7 @@ public int getNeighborIndex(int idx, int d)
 public void object::missionComplete()
 {
 	Message("Mission completed");
+	PrintDebug();
 }
 
 public void object::Message(string s)
@@ -1371,6 +1371,26 @@ public float object::distance2DangerPlant(point p)
 	}
 	
 	object o = search(com.dangerPlants,p);
+	if (o == null)
+	{
+		return 999;
+	}
+	else
+	{
+		return distance2d(p,o.position);
+	}
+}
+
+public float object::distance2Quartz(point p)
+{
+	SatCom com();
+	
+	if (!com.detectedQuartz)
+	{
+		return 999;
+	}
+	
+	object o = search(com.quartz,p);
 	if (o == null)
 	{
 		return 999;
@@ -2041,98 +2061,63 @@ public object[] object::RadarAll(int c)
 // Final heading equals initial heading.
 public void object::flySideways(float distance)
 {
-    int dir = (distance > 0) ? 1 : -1;
-    float absDist = abs(distance);
+	int dir = (distance > 0) ? 1 : -1;
+	float absDist = abs(distance);
 
-    // Tune these for your bot
-    float forwardThrust = 0.8;      // forward speed
-    float diffThrust = 0.4;         // differential (sharpness of turn)
-    float baseTime = 0.06;          // seconds per meter (empirical)
+	// Tune these for your bot
+	float forwardThrust = 0.8;	  // forward speed
+	float diffThrust = 0.4;		 // differential (sharpness of turn)
+	float baseTime = 0.06;		  // seconds per meter (empirical)
 
-    float phaseDuration = absDist * baseTime;
+	float phaseDuration = absDist * baseTime;
 
-    // Phase 1: curve to the side
-    motor(forwardThrust + dir * diffThrust,
-          forwardThrust - dir * diffThrust);
-    wait(phaseDuration);
+	// Phase 1: curve to the side
+	motor(forwardThrust + dir * diffThrust,
+		  forwardThrust - dir * diffThrust);
+	wait(phaseDuration);
 
-    // Phase 2: curve back to cancel heading change
-    motor(forwardThrust - dir * diffThrust,
-          forwardThrust + dir * diffThrust);
-    wait(phaseDuration);
+	// Phase 2: curve back to cancel heading change
+	motor(forwardThrust - dir * diffThrust,
+		  forwardThrust + dir * diffThrust);
+	wait(phaseDuration);
 
-    motor(0, 0);
-}
-
-public void object::avoidStuck(object target)
-{
-	if (target == null) return;
-	
-	if (target.position.z + 2 >= this.position.z)
-	{
-		avoidStuck();
-		return;
-	}
-	
-	float weaponHeight = (this.category == LeggedOrgaShooter || this.category == WingedOrgaShooter ? 2.0 : 1.5); // height of weapon above platform
-	float dis = distance2d(this.position, target.position);
-	point center, left, right, p;
-	center = mid(this.position, target.position);
-	center.z = topo(center) + weaponHeight;
-	left = leftPoint(this.position,center,dis/2);
-	left.z = topo(left) + weaponHeight;
-	right = rightPoint(this.position,center,dis/2);
-	right.z = topo(right) + weaponHeight;
-	
-	if (checkLOS(center, target.position))
-	{
-		Message("Crawl towards target");
-		p = center;
-	}
-	else if (checkLOS(left, target.position))
-	{
-		Message("Crawl to left side of target");
-		p = left;
-	}
-	else if (checkLOS(right, target.position))
-	{
-		Message("Crawl to right side of target");
-		p = right;
-	}
-	else
-	{
-		Message("Crawl towards target");
-		p = target.position;
-	}
-	
-	p.z = topo(p);
-	
-	while (distance2d(this.position, p) > 2)
-	{
-		crawl(p);
-		checkEnemyThreat();
-		if (target == null || target.dead) break;
-	}
+	motor(0, 0);
 }
 
 public void object::avoidStuck()
 {
 	SatCom com();
-	com.sign = (rand() < 0.5) ? -1 : 1;
+	
+	point ahead = aheadPoint(10);
+	point left = leftPoint(this.position, ahead, 10);
+	left.z = topo(left);
+	point right = rightPoint(this.position, ahead, 10);
+	right.z = topo(right);
+	int sign = (left.z < right.z ? 1 : -1);
+	if (com.detectedQuartz)
+	{
+		object q = radar(com.quartz,0,180,0,5);
+		if (q != null)
+		{
+			sign =(distance2d(left, q.position) > distance2d(right, q.position) ? 1 : -1);
+		}
+	}
+	
 	errmode(0);
 	if (this.category == WingedShooter || this.category == WingedOrgaShooter)
 	{
 		jet(1);
 		if (this.temperature > com.temperatureThreshold) return;
 	}
-	checkEnemyThreat();
 	motor(-1,-1);
 	wait(1);
 	checkEnemyThreat();
-	turn(60*com.sign);
+	turn(60*sign);
+	motor(1,1);
+	wait(1);
 	checkEnemyThreat();
 	motor(1,1);
-	wait(2);
+	wait(1);
 	checkEnemyThreat();
 	errmode(1);
 }
@@ -4383,13 +4368,32 @@ public void object::aimAndFire(object target)
 		if (target.category != AlienWasp && elapsedTime < abstime())
 		{
 			Message("Line of sight blocked, try other position");
-			if (this.category == WingedShooter || this.category == WingedOrgaShooter)
+			if (checkLOS(target.position)) fireAt(target.position);
+			if (target != null)	avoidStuck();
+			if (checkLOS(target.position)) fireAt(target.position);
+			// if land bot and target is 2 m below bot
+			if (target != null && !target.dead && this.category != WingedShooter && this.category != WingedOrgaShooter && this.position.z > target.position.z + 2)
 			{
-				avoidStuck();
-			}
-			else // land bot
-			{
-				avoidStuck(target);
+				float dis = distance(this.position, target.position);
+				float dir = direction(target.position);
+				point m = this.position;
+				for (int i = 0; i < dis; i++)
+				{
+					m.x = this.position.x + cos(dir) * i;
+					m.y = this.position.y + sin(dir) * i;
+					m.z = topo(m) + weaponHeight;
+					if (checkLOS(m, target.position)) break;
+				}
+				m.z = topo(m);
+				Message("Target is below bot, crawl towards target");
+				current = radar(com.ants,0,360,0,scanRange);
+				while (distance(this.position, m) > 2 && current != null)
+				{
+					crawl(m);
+					if (checkLOS(current.position)) fireAt(current.position);
+					if (this.shieldLevel > com.shieldThreshold) break;
+					current = radar(com.ants,0,360,0,scanRange);
+				}
 			}
 			errmode(1);
 			return;
@@ -4512,8 +4516,9 @@ public void object::aimAndFire(object target)
 		if
 		(
 		(abs(a) <= maxAngle && abs(azimuth) <= 2)
-		|| (this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20)
-		|| (abs(height) <= 7 && range <= 20)
+		|| (this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20 && height < 0 && this.pitch < 0)
+		|| (this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20 && height >= 0 && this.pitch >= 0)
+		|| ((this.category == WingedShooter || this.category == WingedOrgaShooter) && range <= 20 && abs(height) <= 7)
 		)
 		{
 			// 3-round burst
@@ -4526,6 +4531,17 @@ public void object::aimAndFire(object target)
 			fireTime = abstime() + it + 0.2; // wait until round hit (or not)
 			Debug("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 		}
+		else if (this.category != WingedShooter && this.category != WingedOrgaShooter)
+		{
+			float target_angle = atan2(target.position.z - this.position.z, distance2d(this.position, target.position));
+			if (this.pitch < 0 && target_angle < 0 && this.pitch + 20 >= target_angle)
+			{
+				if (fireAt(target.position))
+				{
+					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
+				}
+			}
+		}
 	}
 }
 
@@ -4533,19 +4549,36 @@ public bool object::fireAt(point p)
 {
 	SatCom com();
 	
-	turn(direction(p));
+	float weaponHeight = (this.category == LeggedOrgaShooter || this.category == WingedOrgaShooter ? 2.0 : 1.5); // height of weapon above platform
+	float weaponOffset = (this.category == LeggedOrgaShooter || this.category == WingedOrgaShooter ? 2.0 : 1.5); // weapon is this amount in front of platform
+	
 	float dist=distance2d(p,this.position);
-	float height=this.position.z-p.z;
+	float height=this.position.z+weaponHeight-p.z;
 	float ipitch=atan2(height,dist);
 	ipitch+=this.pitch; //compensate
 	float iangle=direction(p);
 	//here we rotate ipitch and iangle by roll to compensate for that part of the scheme
 	float aimpitch=ipitch*cos(roll)-iangle*sin(roll);
 	float aimangle=iangle*cos(roll)+ipitch*sin(roll);
+	
+	if (abs(aimangle) > 40)
+	{
+		turn(direction(p));
+		dist=distance2d(p,this.position);
+		height=this.position.z+weaponHeight-p.z;
+		ipitch=atan2(height,dist);
+		ipitch+=this.pitch; //compensate
+		iangle=direction(p);
+		//here we rotate ipitch and iangle by roll to compensate for that part of the scheme
+		aimpitch=ipitch*cos(roll)-iangle*sin(roll);
+		aimangle=iangle*cos(roll)+ipitch*sin(roll);
+	}
+	
 	if (abs(aimpitch) <= com.maxAimAngle && abs(aimangle) <= 40)
 	{
 		aim(-aimpitch,-aimangle);
 		fire(0.05);
+		Message("Fired with emergency aim: angle " + aimpitch + ", azimuth " + aimangle + ", range " + dist);
 		Debug("Fired with emergency aim: angle " + aimpitch + ", azimuth " + aimangle + ", range " + dist);
 		return true;
 	}
@@ -4650,6 +4683,7 @@ public bool object::isLandingPoint(point p)
 	
 	if (!isFlat(p,com.safeFlatGround)) return false;
 	if (distance2DangerPlant(p) < com.safeRoot) return false;
+	if (distance2Quartz(p) < com.safeRoot) return false;
 	if (distance2Spider(p) < com.safeAnt) return false;
 	if (!checkLOS(p)) return false;
 	return true;
@@ -4702,7 +4736,7 @@ public point object::searchSafeLZ(point botPos)
 			// === CANDIDATE CHECK ===
 			float candidateZ = getNodeZ(idx);
 			if (candidateZ < com.safeTopo) continue;
-			if (candidateZ > botPos.z + 2.5) continue;
+			if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && candidateZ > botPos.z + 3) continue;
 			
 			point center;
 			center.x = getNodeX(idx);
@@ -4727,7 +4761,7 @@ public point object::searchSafeLZ(point botPos)
 				p.z = topo(p);
 				
 				if (p.z < com.safeTopo) continue;
-				if (p.z > botPos.z + 2.5) continue;
+				if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && p.z > botPos.z + 3) continue;
 				
 				if (isLandingPoint(p))
 				{
@@ -4801,19 +4835,26 @@ public void object::checkEnemyThreat()
 	com.returnMessage = "checkEnemyThreat";
 	if (enemy != null)
 	{
-		if (!checkLOS(enemy)) return;
 		float dir = direction(enemy.position);
 		// Normalize the angle
 		if (dir > 180)
-		{
+		{		
 			dir -= 360;
 		}
 		else if (dir < -180)
 		{
 			dir += 360;
 		}
-		turn(dir);
-		aimAndFire(enemy);
+		
+		if (enemy.category == AlienWasp)
+		{
+			turn(dir);
+			aimAndFire(enemy);
+		}
+		else
+		{
+			if (checkLOS(enemy)) fireAt(enemy.position);
+		}
 	}
 }
 
@@ -5249,7 +5290,7 @@ public void object::landAttack()
 	aim(0,0);
 	while (true)
 	{
-		if (category != PhazerShooter) checkSelfStatus();
+		if (this.category != PhazerShooter) checkSelfStatus();
 		
 		target = radar(com.ants);
 		if (target == null) break;
@@ -5414,6 +5455,9 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	
 	float maxOpenZ	= max(startPoint.z,targetPoint.z) + (this.category == WingedShooter || this.category == WingedOrgaShooter ? 5 : 14);
 	
+	if (com.detectedSpaceShip && maxOpenZ < com.spaceShip.position.z) maxOpenZ = com.spaceShip.position.z;
+	Debug("A* maxOpenZ " + maxOpenZ);
+	
 	if (startIndex == targetIndex)
 	{
 		point shortPath[2];
@@ -5460,6 +5504,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	
 	float tentativeG;
 	
+	Debug("A* start main loop with cachedNodes " + com.cachedNodes);
 	// ---------- MAIN LOOP ----------
 	while (foundPath == 0 && openSize > 0)
 	{
@@ -5501,7 +5546,6 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 			foundPath = 1;
 			break;
 		}
-		
 		
 		currentZ = getNodeZ(current);
 		if (parent[current] != -1)
@@ -5549,6 +5593,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 		}
 	}
 	
+	Debug("A* main loop completed with cachedNodes " + com.cachedNodes);
 	// ---------- RECONSTRUCT ----------
 	if (foundPath == 0 || meetNode == -1)
 	{
@@ -5589,13 +5634,24 @@ public void object::escapeMountain(point botPoint, point target)
 	
 	object enemy;
 	
+	Debug("escapeMountain start");
 	if (this.category == LeggedShooter || this.category == LeggedOrgaShooter)
 	{
 		point p = searchSafeLZ(this.position);
-		go(p);
+		if (p.x == 0 && p.y == 0 && p.z == 0)
+		{
+			p = this.position;
+		}
+		else
+		{
+			go(p);
+		}
 	}
-	gotoSafeLZ();
-	jet(-0.01);
+	else
+	{
+		gotoSafeLZ();
+		jet(-0.01);
+	}
 	turn(direction(target));
 	motor(0,0);
 	float dir;
@@ -5727,71 +5783,71 @@ public void object::PrintDebug()
 // Helper: distance from point p to the line segment a-b
 public float distanceToLine(point p, point a, point b)
 {
-    float dx = b.x - a.x;
-    float dy = b.y - a.y;
-    float dz = b.z - a.z;
-    float len2 = dx*dx + dy*dy + dz*dz;
-    if (len2 == 0) return distance(p, a);
-    
-    float t = ((p.x - a.x)*dx + (p.y - a.y)*dy + (p.z - a.z)*dz) / len2;
-    if (t < 0) return distance(p, a);
-    if (t > 1) return distance(p, b);
-    
-    point proj;
-    proj.x = a.x + t*dx;
-    proj.y = a.y + t*dy;
-    proj.z = a.z + t*dz;
-    return distance(p, proj);
+	float dx = b.x - a.x;
+	float dy = b.y - a.y;
+	float dz = b.z - a.z;
+	float len2 = dx*dx + dy*dy + dz*dz;
+	if (len2 == 0) return distance(p, a);
+	
+	float t = ((p.x - a.x)*dx + (p.y - a.y)*dy + (p.z - a.z)*dz) / len2;
+	if (t < 0) return distance(p, a);
+	if (t > 1) return distance(p, b);
+	
+	point proj;
+	proj.x = a.x + t*dx;
+	proj.y = a.y + t*dy;
+	proj.z = a.z + t*dz;
+	return distance(p, proj);
 }
 
 // Simplify the path by removing redundant points.
 public point[] simplifyPath(point[] path, float epsilon)
 {
-    int n = sizeof(path);
-    if (n <= 2) 
-    {
-        point result[n];
-        for (int i = 0; i < n; i++) result[i] = path[i];
-        return result;
-    }
-    
-    // Work on a copy of the path
-    point work[n];
-    for (int i = 0; i < n; i++) work[i] = path[i];
-    
-    bool changed;
-    int currentLen = n;
-    point temp[n]; // temporary storage (max size = original length)
-    
-    do
-    {
-        changed = false;
-        int newCount = 0;
-        temp[newCount++] = work[0];   // always keep first point
-        
-        for (int i = 1; i < currentLen - 1; i++)
-        {
-            // Remove point i if it's close to the line between its neighbours
-            if (distanceToLine(work[i], work[i-1], work[i+1]) <= epsilon)
-            {
-                changed = true;        // mark that we removed something
-            }
-            else
-            {
-                temp[newCount++] = work[i];
-            }
-        }
-        temp[newCount++] = work[currentLen - 1]; // always keep last point
-        
-        // Copy back for next iteration
-        for (int i = 0; i < newCount; i++) work[i] = temp[i];
-        currentLen = newCount;
-        
-    } while (changed); // repeat until no more points are removed
-    
-    // Build the result array of exactly the simplified length
-    point result[currentLen];
-    for (int i = 0; i < currentLen; i++) result[i] = work[i];
-    return result;
+	int n = sizeof(path);
+	if (n <= 2) 
+	{
+		point result[n];
+		for (int i = 0; i < n; i++) result[i] = path[i];
+		return result;
+	}
+	
+	// Work on a copy of the path
+	point work[n];
+	for (int i = 0; i < n; i++) work[i] = path[i];
+	
+	bool changed;
+	int currentLen = n;
+	point temp[n]; // temporary storage (max size = original length)
+	
+	do
+	{
+		changed = false;
+		int newCount = 0;
+		temp[newCount++] = work[0];   // always keep first point
+		
+		for (int i = 1; i < currentLen - 1; i++)
+		{
+			// Remove point i if it's close to the line between its neighbours
+			if (distanceToLine(work[i], work[i-1], work[i+1]) <= epsilon)
+			{
+				changed = true;		// mark that we removed something
+			}
+			else
+			{
+				temp[newCount++] = work[i];
+			}
+		}
+		temp[newCount++] = work[currentLen - 1]; // always keep last point
+		
+		// Copy back for next iteration
+		for (int i = 0; i < newCount; i++) work[i] = temp[i];
+		currentLen = newCount;
+		
+	} while (changed); // repeat until no more points are removed
+	
+	// Build the result array of exactly the simplified length
+	point result[currentLen];
+	for (int i = 0; i < currentLen; i++) result[i] = work[i];
+	return result;
 }
 
