@@ -235,7 +235,7 @@ public class SatCom
 	static bool detectedQueen = false;
 	static float safeAnt = 55;
 	static float safeQueen = 80;
-	static float safeRoot = 30;
+	static float safeRoot = 35;
 	static float safeTopo = 2;
 	static float safeFlatGround = 1.5;
 	static float temperatureThreshold = 0.7;
@@ -283,6 +283,7 @@ public class SatCom
 	// 999 = Not initialized
 	static float gridZ[6561];  // Store actual heights
 	static int cachedNodes;
+	static int waterNodes;
 	
 	static string debugBuffer[100];
 	static int debugIndex = 0;
@@ -364,7 +365,7 @@ public class SatCom
 		{
 			dangerPlants[nr++] = i;
 		}
-		dangerPlants[nr++] = GraviPlant;
+		dangerPlants[nr++] = 715; // GraviPlant
 		if (radar(dangerPlants) != null) detectedDangerPlant = true;
 		
 		nr = 0;
@@ -865,6 +866,7 @@ public class SatCom
 			gridZ[i] = 999;
 		}
 		cachedNodes = 0; // ready to cache
+		waterNodes = 0;
 	}
 		
 	void initFlatSpacesAroundShip(float flatmin, float radius, int numPoints)
@@ -1371,14 +1373,7 @@ public float object::distance2DangerPlant(point p)
 	}
 	
 	object o = search(com.dangerPlants,p);
-	if (o == null)
-	{
-		return 999;
-	}
-	else
-	{
-		return distance2d(p,o.position);
-	}
+	return distance2d(p,o.position);
 }
 
 public float object::distance2Quartz(point p)
@@ -1391,14 +1386,7 @@ public float object::distance2Quartz(point p)
 	}
 	
 	object o = search(com.quartz,p);
-	if (o == null)
-	{
-		return 999;
-	}
-	else
-	{
-		return distance2d(p,o.position);
-	}
+	return distance2d(p,o.position);
 }
 
 public float object::distance2Roots(point p)
@@ -1458,7 +1446,7 @@ public void object::crawl2p(point p)
 		{
 			if (checkLOS(enemy.position))
 			{
-				checkEnemyThreat();
+				checkEnemy();
 			}
 		}
 		crawl(p);
@@ -1788,9 +1776,9 @@ public void object::cacheGrid()
 	
 	if (idx != -1)
 	{
-		//Message("Caching gridZ "+com.cachedNodes);	
-		float z = getNodeZ(idx);  // Cache this node
+		float z = getNodeZ(idx); // Cache this node
 		com.cachedNodes++;
+		if (z < com.safeTopo) com.waterNodes++;
 	}	
 }
 
@@ -1837,42 +1825,12 @@ public bool object::isStuck()
 
 public void object::fly(point p)
 {
-	SatCom com();
-	
-	object root, o;
-	float dir;
-	
 	jetPower(p);
 	motorPower(direction(p));
 	
 	cacheGrid();
 	
-	if (isStuck())
-	{
-		Message("Avoiding obstacle");
-		avoidStuck();
-	}
-	
-	if (com.detectedDangerPlant)
-	{
-		root = radar(com.dangerPlants,0,360,0,com.safeAnt);
-		if (root != null && root.category == GraviPlant)
-		{
-			dir = direction(root.position);
-			if (distance2d(this.position,root.position) <= com.safeRoot && -60 < dir && dir < 60)
-			{
-				turn(dir);
-				while (distance2d(this.position,root.position) <= com.safeRoot)
-				{
-					motor(-1,-1);
-					checkEnemyThreat();
-				}
-				turn(90);
-				motor(1,1);
-				wait(2);
-			}
-		}
-	}
+	avoidObstacle();	
 }
 
 public void object::fly2p(point p)
@@ -1901,13 +1859,12 @@ public void object::fly2p(point p)
 		i = 0;
 		while (dis2d > 1 && i < 20)
 		{
-			turn(direction(p));
-			motor(0.2,0.2);
+			motor(0.3,0.3);
 			dis2d = distance2d(this.position,p);
 			i++;
 		}
 		i = 0;
-		while (this.altitude > 0 && i < 20)
+		while (this.altitude > 0.2 && i < 20)
 		{
 			jet(-0.8);
 			i++;
@@ -2057,38 +2014,23 @@ public object[] object::RadarAll(int c)
 }
 
 // Move sideways by distance meters.
-// Positive = right, negative = left.
+// Positive = left, negative = right.
 // Final heading equals initial heading.
-public void object::flySideways(float distance)
+public void object::flySideways(float dir)
 {
-	int dir = (distance > 0) ? 1 : -1;
-	float absDist = abs(distance);
-
-	// Tune these for your bot
-	float forwardThrust = 0.8;	  // forward speed
-	float diffThrust = 0.4;		 // differential (sharpness of turn)
-	float baseTime = 0.06;		  // seconds per meter (empirical)
-
-	float phaseDuration = absDist * baseTime;
-
-	// Phase 1: curve to the side
-	motor(forwardThrust + dir * diffThrust,
-		  forwardThrust - dir * diffThrust);
-	wait(phaseDuration);
-
-	// Phase 2: curve back to cancel heading change
-	motor(forwardThrust - dir * diffThrust,
-		  forwardThrust + dir * diffThrust);
-	wait(phaseDuration);
-
-	motor(0, 0);
+	errmode(0);
+	turn(-1*dir);
+	move(-12);
+	turn(dir);
+	move(4);
+	errmode(1);
 }
 
 public void object::avoidStuck()
 {
 	SatCom com();
 	
-	point ahead = aheadPoint(10);
+	point ahead = aheadPoint(5);
 	point left = leftPoint(this.position, ahead, 10);
 	left.z = topo(left);
 	point right = rightPoint(this.position, ahead, 10);
@@ -2103,23 +2045,35 @@ public void object::avoidStuck()
 		}
 	}
 	
-	errmode(0);
 	if (this.category == WingedShooter || this.category == WingedOrgaShooter)
 	{
 		jet(1);
 		if (this.temperature > com.temperatureThreshold) return;
 	}
+	avoidStuck(60*sign);
+}
+
+public void object::avoidStuck(float dir)
+{
 	motor(-1,-1);
-	wait(1);
-	checkEnemyThreat();
-	turn(60*sign);
+	Wait(1);
+	
+	motor(-1,-1);
+	Wait(1);
+	
+	turn(dir);
+	
 	motor(1,1);
-	wait(1);
-	checkEnemyThreat();
+	Wait(1);
+	
 	motor(1,1);
-	wait(1);
-	checkEnemyThreat();
-	errmode(1);
+	Wait(1);	
+}
+
+public void object::Wait(int sec)
+{
+	wait(sec);
+	checkEnemy();
 }
 
 public void object::go(point p)
@@ -3948,7 +3902,7 @@ public void object::moveAndDestroy(object target)
 {
 	SatCom com();
 	
-	float dis, side;
+	float dis2d, side;
 	int i;
 	point p,hit,left,right;
 	bool los = false;
@@ -3963,16 +3917,17 @@ public void object::moveAndDestroy(object target)
 		fly(target.position);
 	}
 	
-	dis = distance(this.position,target.position);
+	dis2d = distance2d(this.position,target.position);
+	
 	if (target.category == AlienWasp)
 	{
-		if (dis > com.safeQueen) return;
+		if (dis2d > com.safeQueen) return;
 		motor(0,0);
 		aimAndFire(target);
 		return;
 	}
 	
-	if (dis > com.attackRange)
+	if (dis2d > com.safeAnt)
 	{
 		if (target.category == AlienWasp) return;
 		hit = sensor(1.5,target.position);
@@ -3986,46 +3941,34 @@ public void object::moveAndDestroy(object target)
 	{
 		if (!checkLOS(target))
 		{
-			los = false;
-			side = 5;
-			for (i = 1; i < 5; i++)
+			left = leftPoint(20);
+			right = rightPoint(20);
+			left.z = this.position.z;
+			right.z = this.position.z;
+			if (checkLOS(left,target.position) && distance2Ant(left) > com.safeAnt)
 			{
-				left = leftPoint(5*i);
-				left.z = this.position.z;
-				if (checkLOS(left,target.position) && topo(left) < left.z)
-				{
-					side = -5*i;
-					los = true;
-					break;
-				}
-				right = rightPoint(5*i);
-				right.z = this.position.z;
-				if (checkLOS(right,target.position) && topo(right) < right.z)
-				{
-					side = 5*i;
-					los = true;
-					break;
-				}
+				Message("Line of sight blocked, fly to left side");
+				flySideways(75);
 			}
-			
-			if (los)
+			else if (checkLOS(right,target.position) && distance2Ant(right) > com.safeAnt)
 			{
-				// Found new position with LOS, fly sideways to that position and fire.
-				Message("Found new position with clear line of sight, flying to that position");
-				flySideways(side);
+				Message("Line of sight blocked, fly to right side");
+				flySideways(-75);
 			}
 			else
 			{
 				// Could not find new position with LOS, fly to side with lower topo and return to try again.
 				if (topo(left) < topo(right))
 				{
+					if (distance2Ant(left) < com.safeAnt) return;
 					Message("Line of sight blocked, fly to left side");
-					flySideways(-20);
+					flySideways(75);
 				}
 				else
 				{
+					if (distance2Ant(right) < com.safeAnt) return;
 					Message("Line of sight blocked, fly to right side");
-					flySideways(20);
+					flySideways(-75);
 				}
 				return;
 			}
@@ -4359,6 +4302,15 @@ public void object::aimAndFire(object target)
 			return;
 		}
 		
+		if (this.shieldLevel < com.shieldThreshold)
+		{
+			if (found(RepairCenter))
+			{
+				errmode(1);
+				return;
+			}
+		}
+		
 		if (target == null || target.dead)
 		{
 			errmode(1);
@@ -4367,27 +4319,14 @@ public void object::aimAndFire(object target)
 		
 		if (target.category != AlienWasp && elapsedTime < abstime())
 		{
-			Message("Line of sight blocked, try other position");
-			if (checkLOS(target.position)) fireAt(target.position);
-			if (target != null)	avoidStuck();
-			if (checkLOS(target.position)) fireAt(target.position);
 			// if land bot and target is 2 m below bot
-			if (target != null && !target.dead && this.category != WingedShooter && this.category != WingedOrgaShooter && this.position.z > target.position.z + 2)
+			if (this.category != WingedShooter && this.category != WingedOrgaShooter && this.position.z > target.position.z + 2)
 			{
-				float dis = distance(this.position, target.position);
-				float dir = direction(target.position);
-				point m = this.position;
-				for (int i = 0; i < dis; i++)
-				{
-					m.x = this.position.x + cos(dir) * i;
-					m.y = this.position.y + sin(dir) * i;
-					m.z = topo(m) + weaponHeight;
-					if (checkLOS(m, target.position)) break;
-				}
+				point m = mid(this.position,target.position);
 				m.z = topo(m);
 				Message("Target is below bot, crawl towards target");
 				current = radar(com.ants,0,360,0,scanRange);
-				while (distance(this.position, m) > 2 && current != null)
+				while (distance(this.position, m) > 1 && current != null)
 				{
 					crawl(m);
 					if (checkLOS(current.position)) fireAt(current.position);
@@ -4395,6 +4334,7 @@ public void object::aimAndFire(object target)
 					current = radar(com.ants,0,360,0,scanRange);
 				}
 			}
+			
 			errmode(1);
 			return;
 		}
@@ -4655,22 +4595,25 @@ public void object::gotoSafeLZ()
 
 public bool object::isFlat(point p, float radius)
 {
+	SatCom com();
+	
 	// Check 4 neighbor points: up, right, down, left
 	// Each at distance 'radius' from point p
 	
 	// Directions: up, right, down, left
 	float dirX[] = {0, 1, 0, -1};
 	float dirY[] = {1, 0, -1, 0};
+	point neighbor;
 	
 	for (int i = 0; i < 4; i++)
 	{
-		point neighbor;
 		neighbor.x = p.x + dirX[i] * radius;
 		neighbor.y = p.y + dirY[i] * radius;
 		neighbor.z = topo(neighbor);
 		
 		// If height difference > 0.4m, terrain is not flat
-		if (neighbor.z < 0 || abs(neighbor.z - p.z) > 0.4) return false;
+		//if (neighbor.z < 0 || abs(neighbor.z - p.z) > 0.4) return false;
+		if (neighbor.z < com.safeTopo || abs(neighbor.z - p.z) > 0.25) return false;
 	}
 	
 	// All 4 neighbors are within 0.4m height difference
@@ -4684,7 +4627,7 @@ public bool object::isLandingPoint(point p)
 	if (!isFlat(p,com.safeFlatGround)) return false;
 	if (distance2DangerPlant(p) < com.safeRoot) return false;
 	if (distance2Quartz(p) < com.safeRoot) return false;
-	if (distance2Spider(p) < com.safeAnt) return false;
+	//if (distance2Ant(p) < com.safeAnt) return false;
 	if (!checkLOS(p)) return false;
 	return true;
 }
@@ -4748,7 +4691,7 @@ public point object::searchSafeLZ(point botPos)
 				return center;
 			}
 			
-			// === 4 MIDPOINTS (sqrt(50) ˜ 7.07m) ===
+			// === 4 MIDPOINTS (sqrt(50)   7.07m) ===
 			float radius_mid = 7.07;
 			float dirX[] = {1, 1, -1, -1};
 			float dirY[] = {1, -1, -1, 1};
@@ -4784,6 +4727,7 @@ public void object::gotoSafeLZ(object o)
 	
 	float t = abstime();
 	ipf(10000);
+	jet(1);
 	point landingPoint = searchSafeLZ(this.position);
 	ipf(100);
 	if (landingPoint.x == 0 && landingPoint.y == 0 && landingPoint.z == 0)
@@ -4792,7 +4736,8 @@ public void object::gotoSafeLZ(object o)
 		landingPoint = this.position;
 		landingPoint.z = topo(landingPoint);
 	}
-	com.returnMessage = "Found safe landing point at " + distance2d(this.position,landingPoint) + " m, elapsed time "+(abstime() - t) +" second(s)";
+	jet(1);
+	Message("Found safe landing point at " + distance2d(this.position,landingPoint) + " m, elapsed time "+(abstime() - t) +" second(s)");
 	landAndRest(landingPoint);
 }
 
@@ -4827,33 +4772,65 @@ public float object::speed(point p)
 	return speed;
 }
 
-public void object::checkEnemyThreat()
+public void object::checkEnemy()
 {
 	SatCom com();
 	
 	object enemy = radar(com.ants,0,360,0,com.attackRange);
-	com.returnMessage = "checkEnemyThreat";
-	if (enemy != null)
+	if (enemy == null) return;
+	
+	float dir = direction(enemy.position);
+	// Normalize the angle
+	if (dir > 180)
+	{		
+		dir -= 360;
+	}
+	else if (dir < -180)
 	{
-		float dir = direction(enemy.position);
-		// Normalize the angle
-		if (dir > 180)
-		{		
-			dir -= 360;
-		}
-		else if (dir < -180)
-		{
-			dir += 360;
-		}
-		
-		if (enemy.category == AlienWasp)
+		dir += 360;
+	}
+	
+	if (enemy.category == AlienWasp)
+	{
+		turn(dir);
+		aimAndFire(enemy);
+	}
+	else
+	{
+		if (checkLOS(enemy)) fireAt(enemy.position);
+	}
+}
+
+public void object::avoidObstacle()
+{
+	SatCom com();
+	
+	object root;
+	float dir;
+	
+	if (isStuck())
+	{
+		Message("Avoiding obstacle");
+		avoidStuck();
+	}
+	
+	if (!com.detectedDangerPlant || this.category == LeggedShooter || this.category == LeggedOrgaShooter) return;
+	
+	root = radar(com.dangerPlants,0,360,0,com.safeAnt);
+	if (root != null && root.category == GraviPlant)
+	{
+		dir = direction(root.position);
+		if (distance2d(this.position,root.position) <= com.safeRoot && -60 < dir && dir < 60)
 		{
 			turn(dir);
-			aimAndFire(enemy);
-		}
-		else
-		{
-			if (checkLOS(enemy)) fireAt(enemy.position);
+			while (distance2d(this.position,root.position) <= com.safeRoot)
+			{
+				motor(-1,-1);
+				checkEnemy();
+			}
+			turn(90);
+			motor(1,1);
+			wait(2);
 		}
 	}
 }
@@ -4864,16 +4841,36 @@ public void object::landAndRest(point p)
 	
 	point behind,left,right;
 	float d = 1.5;
+	float dis2d;
 	
-	plantFlag(p,52); // Yellow Circle
+	float dir;
+    float dis;
+    float dif;
+    float ang;
 	
-	while (this.position.z < p.z + 2)
+	plantFlag(p,52);
+	
+	turn(direction(p));
+	dis2d = distance2d(this.position,p);
+	
+	while (dis2d > 5 && 0 < this.temperature && this.temperature < 0.95)
 	{
-		jet(1);
-		wait(0.01);
+		dis = distance(this.position,p);
+		dif = p.z-this.position.z;
+		ang = asin(dif/dis);
+		jet(1-(ang/-20));
+		dir = direction(p);
+		motor(1-dir/22.5,1+dir/22.5);
+		
+		//checkEnemy();
+		
+		avoidObstacle();
+		
+		dis2d = distance2d(this.position,p);
 	}
 	
-	fly2p(p);
+	motor(0,0);
+	
 	while (this.temperature > 0)
 	{
 		while (this.altitude > 0 && this.temperature > 0)
@@ -4892,7 +4889,7 @@ public void object::landAndRest(point p)
 		{
 			motor(0,0);
 		}
-		checkEnemyThreat();
+		checkEnemy();
 	}
 }
 
@@ -4932,6 +4929,12 @@ public point object::getRestPoint(object center, float radius)
 public void object::checkSelfStatus()
 {
 	SatCom com();
+	
+	if (com.cachedNodes > 500 && com.temperatureThreshold > 0.6 && com.waterNodes*100/com.cachedNodes > 50)
+	{
+		Message("Lake and island environment detected, adjust temperature threshold");
+		com.temperatureThreshold = 0.6;
+	}
 	
 	if (this.temperature > com.temperatureThreshold)
 	{
@@ -5098,7 +5101,7 @@ public void object::attack()
 		wait(0.2);
 	}
 	
-	if (category == WingedShooter || category == WingedOrgaShooter)
+	if (this.category == WingedShooter || this.category == WingedOrgaShooter)
 	{
 		airAttack();
 	}
@@ -5295,17 +5298,16 @@ public void object::landAttack()
 		target = radar(com.ants);
 		if (target == null) break;
 		
-		o = radar(Any,0,140,1.5,6);
+		o = radar(Any,0,90,1.5,6);
 		if (o == null)
 		{
-			o = radar(Any,0,90,1.5,3);
+			o = radar(Any,0,60,1.5,3);
 		}
 		if (o != null && o.category != 50 && o.category != 51 && o.category != 52 && o.category != target.category && distance2d(this.position,target.position) > com.safeAnt)
 		{
-			turn(direction(o.position));
 			avoidStuck();
 		}
-			
+		
 		i++;
 		crawl(target.position);
 		// check if stuck
@@ -5448,9 +5450,9 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	float moveCost[8] = {10, 14.14, 10, 14.14, 10, 14.14, 10, 14.14};
 	
 	point startPoint; startPoint.x = getNodeX(startIndex); startPoint.y = getNodeY(startIndex); startPoint.z = getNodeZ(startIndex);
-	plantFlag(startPoint, 51); // red cross
+	plantFlag(startPoint, 50); // green cross
 	point targetPoint; targetPoint.x = getNodeX(targetIndex); targetPoint.y = getNodeY(targetIndex); targetPoint.z = getNodeZ(targetIndex);
-	plantFlag(targetPoint, 52); // yellow cross
+	plantFlag(targetPoint, 51); // red cross
 	point nextPoint;
 	
 	float maxOpenZ	= max(startPoint.z,targetPoint.z) + (this.category == WingedShooter || this.category == WingedOrgaShooter ? 5 : 14);
@@ -5508,6 +5510,8 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	// ---------- MAIN LOOP ----------
 	while (foundPath == 0 && openSize > 0)
 	{
+		checkEnemy();
+		
 		if (openSize > maxOpenCount) maxOpenCount = openSize;
 		
 		// Find best node
@@ -5616,7 +5620,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	}
 	
 	point result[pathLen];
-	for (int i = 0; i < pathLen; i = i + 1)
+	for (int i = 0; i < pathLen; i++)
 	{
 		idx = tempPath[pathLen - 1 - i];
 		result[i] = getNodePoint(idx);
@@ -5634,7 +5638,6 @@ public void object::escapeMountain(point botPoint, point target)
 	
 	object enemy;
 	
-	Debug("escapeMountain start");
 	if (this.category == LeggedShooter || this.category == LeggedOrgaShooter)
 	{
 		point p = searchSafeLZ(this.position);
@@ -5652,10 +5655,19 @@ public void object::escapeMountain(point botPoint, point target)
 		gotoSafeLZ();
 		jet(-0.01);
 	}
+	
 	turn(direction(target));
+	
 	motor(0,0);
+	
 	float dir;
 	float dis;
+    float dif;
+    float ang;
+	
+	// check if land on slope before call searchEscapeMountainPath
+	if (abs(this.pitch) > 30) return;
+	
 	Message("Searching for path...");
 	float t = abstime();
 	ipf(10000);
@@ -5666,6 +5678,7 @@ public void object::escapeMountain(point botPoint, point target)
 	int pathLength = sizeof(pathPoints);
 	int i;
 	point p,next;
+	
 	if (pathLength < 3)
 	{
 		gotoSafeLZ();
@@ -5684,6 +5697,7 @@ public void object::escapeMountain(point botPoint, point target)
 		{
 			next = p;
 		}
+		if (checkLOS(next)) continue;
 		turn(direction(p));
 		dis = distance2d(this.position,target);
 		if (checkLOS(target) && dis > com.safeAnt)
@@ -5693,34 +5707,34 @@ public void object::escapeMountain(point botPoint, point target)
 		}
 		while (distance2d(this.position,p) > 5 && distance2d(this.position,p) < distance2d(this.position,next))
 		{
+			if (this.temperature > com.temperatureThreshold)
+			{
+				gotoSafeLZ();
+				if (pathLength < 20) return;
+			}
+			
+			dis = distance(this.position,target);
+			dif = target.z-this.position.z;
+			ang = asin(dif/dis);
+			if (this.position.z < target.z + 15)
+			{
+				jet(1-(ang/-20));
+			}
+			else
+			{
+				jet(0);
+			}
+			motorPower(direction(p));
+			
 			enemy = radar(com.ants,0,360,0,com.attackRange);
 			if (enemy != null)
 			{
-				if (checkLOS(enemy.position))
-				{
-					checkEnemyThreat();
-					return;
-				}
+				Message("Enemy detected, switch back to combat mode");
+				checkEnemy();
+				return;
 			}
 			
-			if (this.temperature > com.temperatureThreshold)
-			{
-				Message("Engine temperature is too high, goto safe landing zone");
-				gotoSafeLZ();
-				if (pathLength < 20)
-				{
-					return;
-				}
-			}
-			
-			jet(1);
-			dir = direction(p);
-			motorPower(dir);
-			if ((this.category == LeggedShooter || this.category == LeggedOrgaShooter) && this.pitch > 60)
-			{
-				Message("Being stuck at current position, try other way");
-				avoidStuck();
-			}
+			avoidObstacle();
 		}
 	}
 }
