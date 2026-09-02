@@ -1,5 +1,5 @@
 /*
-12 August 2026
+02 September 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -1812,6 +1812,8 @@ public bool object::isStuck()
 		}
 	}
 	
+	if (this.pitch > 60) return true;
+	
 	if (this.velocity.x < 0.03 && this.velocity.y < 0.03)
 	{
 		o = radar(Any,0,120,0,5);
@@ -2072,8 +2074,12 @@ public void object::avoidStuck(float dir)
 
 public void object::Wait(int sec)
 {
-	wait(sec);
-	checkEnemy();
+	float t = abstime() + sec;
+	while (abstime() < t)
+	{
+		wait(0.05);
+		checkEnemy();
+	}
 }
 
 public void object::go(point p)
@@ -4249,7 +4255,7 @@ public void object::aimAndFire(object target)
 		return;
 	}
 	
-	float scanRange = (target.category == AlienWasp ? com.safeQueen : com.attackRange); // scan for targets within this radius, 80m for Wasps
+	float scanRange = (target.category == AlienWasp ? com.safeQueen : com.safeAnt); // scan for targets within this radius, 80m for Wasps
 	
 	// Platform specific parameters
 	float minAngle = -20; // minimum gun elevation relative to platform, bot can elevate gun from -20 to 20
@@ -4319,22 +4325,6 @@ public void object::aimAndFire(object target)
 		
 		if (target.category != AlienWasp && elapsedTime < abstime())
 		{
-			// if land bot and target is 2 m below bot
-			if (this.category != WingedShooter && this.category != WingedOrgaShooter && this.position.z > target.position.z + 2)
-			{
-				point m = mid(this.position,target.position);
-				m.z = topo(m);
-				Message("Target is below bot, crawl towards target");
-				current = radar(com.ants,0,360,0,scanRange);
-				while (distance(this.position, m) > 1 && current != null)
-				{
-					crawl(m);
-					if (checkLOS(current.position)) fireAt(current.position);
-					if (this.shieldLevel > com.shieldThreshold) break;
-					current = radar(com.ants,0,360,0,scanRange);
-				}
-			}
-			
 			errmode(1);
 			return;
 		}
@@ -4351,6 +4341,16 @@ public void object::aimAndFire(object target)
 		if (current != target)
 		{
 			target = current;
+			// Initialize the old variables for first tracking
+			oldBearing = this.orientation + direction(target.position);
+			oldRange = distance2d(this.position, target.position);
+			oldHeight = target.position.z - this.position.z;
+			oldTime = abstime();
+			
+			it = oldRange / v0; // initial estimate for intercept time
+			fireTime = abstime() + 0.2; // do not fire for 0.2 seconds (first track target)
+			elapsedTime = abstime() + 5; // only track non wasp target maximun 5 seconds
+			continue;
 		}
 		
 		// Adjust altitude
@@ -5339,8 +5339,58 @@ public void object::landAttack()
 		}
 		
 		dis = distance2d(this.position,target.position);
-		if ((dis <= com.attackRange) || (this.category == PhazerShooter && dis <= com.phazerAttackRange))
+		if (dis <= com.attackRange || (this.category == PhazerShooter && dis <= com.phazerAttackRange))
 		{
+			if (!checkLOS(target.position))
+			{
+				float weaponHeight = (this.category == LeggedOrgaShooter || this.category == WingedOrgaShooter ? 2.0 : 1.5); // height of weapon above platform
+				point left = leftPoint(com.attackRange);
+				left.z = topo(left) + weaponHeight;
+				point right = rightPoint(com.attackRange);
+				right.z = topo(right) + weaponHeight;
+				float dir = 60;
+				
+				if (checkLOS(left,target.position))
+				{
+					dir = 1*dir;
+				}
+				else if (checkLOS(right,target.position))
+				{
+					dir = -1*dir;
+				}
+				else
+				{
+					if (left.z < right.z)
+					{
+						dir = 1*dir;
+					}
+					else
+					{
+						dir = -1*dir;
+					}
+				}
+				if (dir > 0)
+				{
+					Message("Line of sight blocked, crawl to left side");
+				}
+				else
+				{
+					Message("Line of sight blocked, crawl to right side");
+				}
+				avoidStuck(dir);
+				if (this.position.z > target.position.z + 2)
+				{
+					Message("Target is below bot, crawl towards target");
+					dis = distance2d(this.position,target.position);
+					while (dis > com.attackRange || !checkLOS(target.position))
+					{
+						crawl(target.position);
+						Wait(1);
+						if (target == null) break;
+						dis = distance2d(this.position,target.position);
+					}
+				}
+			}
 			motor(0,0);
 			aimAndFire(target);
 		}
@@ -5793,75 +5843,3 @@ public void object::PrintDebug()
 	handle.close();
 	message("Debug buffer written to: files/" + filename);
 }
-
-// Helper: distance from point p to the line segment a-b
-public float distanceToLine(point p, point a, point b)
-{
-	float dx = b.x - a.x;
-	float dy = b.y - a.y;
-	float dz = b.z - a.z;
-	float len2 = dx*dx + dy*dy + dz*dz;
-	if (len2 == 0) return distance(p, a);
-	
-	float t = ((p.x - a.x)*dx + (p.y - a.y)*dy + (p.z - a.z)*dz) / len2;
-	if (t < 0) return distance(p, a);
-	if (t > 1) return distance(p, b);
-	
-	point proj;
-	proj.x = a.x + t*dx;
-	proj.y = a.y + t*dy;
-	proj.z = a.z + t*dz;
-	return distance(p, proj);
-}
-
-// Simplify the path by removing redundant points.
-public point[] simplifyPath(point[] path, float epsilon)
-{
-	int n = sizeof(path);
-	if (n <= 2) 
-	{
-		point result[n];
-		for (int i = 0; i < n; i++) result[i] = path[i];
-		return result;
-	}
-	
-	// Work on a copy of the path
-	point work[n];
-	for (int i = 0; i < n; i++) work[i] = path[i];
-	
-	bool changed;
-	int currentLen = n;
-	point temp[n]; // temporary storage (max size = original length)
-	
-	do
-	{
-		changed = false;
-		int newCount = 0;
-		temp[newCount++] = work[0];   // always keep first point
-		
-		for (int i = 1; i < currentLen - 1; i++)
-		{
-			// Remove point i if it's close to the line between its neighbours
-			if (distanceToLine(work[i], work[i-1], work[i+1]) <= epsilon)
-			{
-				changed = true;		// mark that we removed something
-			}
-			else
-			{
-				temp[newCount++] = work[i];
-			}
-		}
-		temp[newCount++] = work[currentLen - 1]; // always keep last point
-		
-		// Copy back for next iteration
-		for (int i = 0; i < newCount; i++) work[i] = temp[i];
-		currentLen = newCount;
-		
-	} while (changed); // repeat until no more points are removed
-	
-	// Build the result array of exactly the simplified length
-	point result[currentLen];
-	for (int i = 0; i < currentLen; i++) result[i] = work[i];
-	return result;
-}
-
