@@ -224,6 +224,7 @@ public class SatCom
 	static int[] roots;
 	static int[] enemies;
 	static bool detectedSpaceShip = false;
+	static bool detectedRuinSpaceShip = false;
 	static bool detectedDangerPlant = false;
 	static bool detectedQuartz = false;
 	static bool detectedAnt = false;
@@ -329,6 +330,7 @@ public class SatCom
 		me = radar(Me);
 		spaceShip = radar(SpaceShip);
 		if (spaceShip != null) detectedSpaceShip = true;
+		if (radar(611) != null || radar(612) != null) detectedRuinSpaceShip = true;
 		botFactory = radar(BotFactory);
 		researchCenter = radar(ResearchCenter);
 		repairCenter = radar(RepairCenter);
@@ -1782,24 +1784,6 @@ public void object::cacheGrid()
 	}	
 }
 
-public void object::fly2Wasp(object target)
-{
-	SatCom com();
-	
-	if (target == null) return;
-	
-	if (this.pitch < -40 || this.pitch > 40)
-	{
-		Message("Avoiding obstacle");
-		avoidStuck();
-	}
-	
-	jetPower(target);
-	motorPower(direction(target.position));
-	
-	cacheGrid();
-}
-
 public bool object::isStuck()
 {
 	object o;
@@ -1812,10 +1796,22 @@ public bool object::isStuck()
 		}
 	}
 	
-	if (this.pitch > 60) return true;
+	if (this.pitch > 65) return true;
 	
 	if (this.velocity.x < 0.03 && this.velocity.y < 0.03)
 	{
+		o = radar(612,0,120,0,10); //Ruin; Space Ship Top
+		if (o != null)
+		{
+			return true;
+		}
+		
+		o = radar(611,0,120,0,10); //Ruin; Space Ship Bace
+		if (o != null)
+		{
+			return true;
+		}
+		
 		o = radar(Any,0,120,0,5);
 		if (o != null && abs(this.position.z - o.position.z) < 1 && o.category != 50 && o.category != 51 && o.category != 52)
 		{
@@ -1825,13 +1821,20 @@ public bool object::isStuck()
 	return false;
 }
 
+public void object::fly2Wasp(object target)
+{
+	if (target == null) return;
+	jetPower(target);
+	motorPower(direction(target.position));
+	cacheGrid();
+	avoidObstacle();
+}
+
 public void object::fly(point p)
 {
 	jetPower(p);
 	motorPower(direction(p));
-	
 	cacheGrid();
-	
 	avoidObstacle();	
 }
 
@@ -2039,10 +2042,19 @@ public void object::avoidStuck()
 	right.z = topo(right);
 	int sign = (left.z < right.z ? 1 : -1);
 	
-	object target = radar(com.ants);
-	if (target != null)
+	if (com.detectedRuinSpaceShip)
 	{
-		sign =(distance2d(left, target.position) < distance2d(right, target.position) ? 1 : -1);
+		object r = radar(612,0,120,0,10); //Ruin; Space Ship Top
+		if (r != null)
+		{
+			sign =(distance2d(left, r.position) > distance2d(right, r.position) ? 1 : -1);
+		}
+		
+		r = radar(611,0,120,0,10); //Ruin; Space Ship Bace
+		if (r != null)
+		{
+			sign =(distance2d(left, r.position) > distance2d(right, r.position) ? 1 : -1);
+		}
 	}
 	
 	if (com.detectedQuartz)
@@ -2051,6 +2063,14 @@ public void object::avoidStuck()
 		if (q != null)
 		{
 			sign =(distance2d(left, q.position) > distance2d(right, q.position) ? 1 : -1);
+		}
+	}
+	else
+	{
+		object a = radar(Any,0,180,0,5);
+		if (a != null)
+		{
+			sign =(distance2d(left, a.position) > distance2d(right, a.position) ? 1 : -1);
 		}
 	}
 	
@@ -3934,7 +3954,7 @@ public void object::moveAndDestroy(object target)
 	
 	if (target.category == AlienWasp)
 	{
-		if (dis2d > com.safeQueen) return;
+		if (dis2d > com.attackRange) return;
 		motor(0,0);
 		aimAndFire(target);
 		return;
@@ -4181,7 +4201,8 @@ public void object::aimAndFire(object target)
 		return;
 	}
 	
-	float scanRange = (target.category == AlienWasp ? com.safeQueen : com.safeAnt); // scan for targets within this radius, 80m for Wasps
+	//float scanRange = (target.category == AlienWasp ? com.safeQueen : com.safeAnt); // scan for targets within this radius, 80m for Wasps
+	float scanRange = com.safeAnt; // scan for targets within this radius
 	
 	// Platform specific parameters
 	float minAngle = -20; // minimum gun elevation relative to platform, bot can elevate gun from -20 to 20
@@ -4499,6 +4520,15 @@ public bool object::checkLOS(point bot_position, point ant_position)
 		if (q != null && distance2d(bot_position, q.position) + distance2d(q.position, ant_position) - distance2d(bot_position, ant_position) < 0.5)
 		{
 			Message("LOS is blocked by Quartz");
+			return false;
+		}
+	}
+	else
+	{
+		object r = search(606,ant_position,0,10); // RuinBotFactory
+		if (r != null && distance2d(bot_position, r.position) + distance2d(r.position, ant_position) - distance2d(bot_position, ant_position) < 0.5)
+		{
+			Message("LOS is blocked by Ruin BotFactory");
 			return false;
 		}
 	}
@@ -5700,15 +5730,15 @@ public void object::escapeMountain(point botPoint, point target)
 			}
 			motorPower(direction(p));
 			
+			avoidObstacle();
+			
 			enemy = radar(com.ants,0,360,0,com.attackRange);
 			if (enemy != null)
 			{
 				Message("Enemy detected, switch back to combat mode");
 				checkEnemy();
 				return;
-			}
-			
-			avoidObstacle();
+			}			
 		}
 	}
 }
