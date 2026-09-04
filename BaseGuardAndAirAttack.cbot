@@ -4,16 +4,16 @@ extern void object::BaseGuardAndAirAttack()
 	
 	int bot1 = WingedShooter;
 	int bot2 = WingedOrgaShooter;
-	
+
 	int numBot = 1;
-	
-	if (radar(RepairCenter) == null)
-	{
-		produce(flatSpace(),0,RepairCenter);
-	}
-	
+		
 	while (found(com.ants))
 	{
+		if (radar(RepairCenter) == null)
+		{
+			produce(flatSpace(),0,RepairCenter);
+		}
+		
 		if (!found(bot1))
 		{
 			for (int i = 0; i < numBot; i++)
@@ -39,7 +39,7 @@ public void object::Shooter()
 	SatCom com();
 	
 	camerafocus(this);
-	if (category == WingedShooter)
+	if (category == WingedOrgaShooter)
 	{
 		baseGuard(com.spaceShip,30);
 	}
