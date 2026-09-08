@@ -1,5 +1,5 @@
 /*
-02 September 2026
+09 September 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -285,6 +285,7 @@ public class SatCom
 	static float gridZ[6561];  // Store actual heights
 	static int cachedNodes;
 	static int waterNodes;
+	static int landingNode[6561]; // 0 = node is water node  or not flat for landing, 1 = node itself is flat for landing, 2-5 = midpoint d (0-3) is flat for landing
 	
 	static string debugBuffer[100];
 	static int debugIndex = 0;
@@ -643,8 +644,7 @@ public class SatCom
 		RADII[712] = 03.25; //Green Mega Stalk; Stranve Plant, Small
 		RADII[713] = 05.25; //Green Mega Stalk; Stranve Plant, Med
 		RADII[714] = 07.25; //Green Mega Stalk; Stranve Plant, Large
-		RADII[715] = 07.25; //Green Mega Stalk; Stranve Plant, Large with Green Shield like apperatice
-		RADII[715] = 22.00; //#715's Green Shield (affects flyers ability to fly); you cannot fly over it
+		RADII[715] = 22.00; //Green Mega Stalk; Stranve Plant, Large with Green Shield like apperatice (affects flyers ability to fly); you cannot fly over it
 		
 		RADII[731] = 02.00; //Mushroom; non corrosive
 		RADII[732] = 02.00; //Mushroom; corrosive
@@ -866,6 +866,7 @@ public class SatCom
 		for (int i = 0; i < totalNodes; i++)
 		{
 			gridZ[i] = 999;
+			landingNode[i] = 0;
 		}
 		cachedNodes = 0; // ready to cache
 		waterNodes = 0;
@@ -943,18 +944,88 @@ public float getNodeY(int idx)
 public float getNodeZ(int idx)
 {
 	SatCom com();
-	float t;
-	point p;
+	point c;
 	
 	if (com.gridZ[idx] < 999)
 	{
 		return com.gridZ[idx];
 	}
 	
-	p.x = getNodeX(idx);
-	p.y = getNodeY(idx);
-	com.gridZ[idx] = topo(p);
+	c.x = getNodeX(idx);
+	c.y = getNodeY(idx);
+	c.z = topo(c);
+	com.gridZ[idx] = c.z;
+	com.cachedNodes++;
+	if (c.z < 0)
+	{
+		com.waterNodes++;
+	}
+	else
+	{
+		if (c.z >= com.safeTopo)
+		{
+			if (isFlat(c,com.safeFlatGround))
+			{
+				com.landingNode[idx] = 1;  // Node itself is flat for landing
+			}
+			else // check 4 points
+			{
+				// === 4 MIDPOINTS (sqrt(50)   7.07m) ===
+				float radius_mid = 7.07;
+				float dirX[] = {1, 1, -1, -1};
+				float dirY[] = {1, -1, -1, 1};
+				
+				for (int d = 0; d < 4; d++)
+				{
+					point p;
+					p.x = c.x + dirX[d] * radius_mid;
+					p.y = c.y + dirY[d] * radius_mid;
+					p.z = topo(p);
+					
+					if (p.z < com.safeTopo) continue;
+					if (isFlat(p,com.safeFlatGround))
+					{
+						com.landingNode[idx] = 2 + d; // one of 4 mid points is flat for landing
+						break;
+					}
+				}
+			}
+		}
+	}
 	return com.gridZ[idx];
+}
+
+public point getLandingPoint(int idx)
+{
+	SatCom com();
+	
+	// === 4 MIDPOINTS (sqrt(50)   7.07m) ===
+	float radius_mid = 7.07;
+	float dirX[] = {1, 1, -1, -1};
+	float dirY[] = {1, -1, -1, 1};
+	point c,p;
+	
+	int d = com.landingNode[idx];
+	
+	if (d == 0)
+	{
+		p.x = 0;
+		p.y = 0;
+		p.z = 0;
+	}
+	else if (d == 1)
+	{
+		p = getNodePoint(idx);
+	}
+	else
+	{
+		c = getNodePoint(idx);
+		d = d - 2;
+		p.x = c.x + dirX[d] * radius_mid;
+		p.y = c.y + dirY[d] * radius_mid;
+		p.z = topo(p);
+	}
+	return p;
 }
 
 // Helper: get world point from index
@@ -1469,15 +1540,16 @@ public void object::crawl(point p)
 			motor(-1,-1);
 			wait(0.2);
 			dir = 60-i;
-			motor(1 - dir/180,1 + dir/180);
+			//motor(1 - dir/180,1 + dir/180);
+			motorPower(dir);
 			wait(0.2);
 			return;
 		}
-		cacheGrid();
 	}
 	
 	dir = direction(p);
-	motor(1 - dir/180,1 + dir/180);
+	//motor(1 - dir/180,1 + dir/180);
+	motorPower(dir);
 	
 	cacheGrid();
 	
@@ -1566,15 +1638,15 @@ public int object::jetPower(point p)
 	{
 		h = dis*tan8;
 	}
-	else if (com.attackRange < dis && dis <= com.attackRange*2)
+	else if (dis <= com.attackRange*2)
 	{
 		h = dis*tan10;
 	}
-	else if (com.attackRange*2 < dis && dis <= com.attackRange*3)
+	else if (dis <= com.attackRange*3)
 	{
 		h = dis*tan14;
 	}
-	else if (com.attackRange*3 < dis && dis <= com.attackRange*4)
+	else if (dis <= com.attackRange*4)
 	{
 		h = dis*tan18;
 	}
@@ -1779,8 +1851,6 @@ public void object::cacheGrid()
 	if (idx != -1)
 	{
 		float z = getNodeZ(idx); // Cache this node
-		com.cachedNodes++;
-		if (z < com.safeTopo) com.waterNodes++;
 	}	
 }
 
@@ -1790,7 +1860,7 @@ public bool object::isStuck()
 	
 	if (this.category == WingedShooter || this.category == WingedOrgaShooter)
 	{
-		if (this.pitch < -40 || this.pitch > 40)
+		if (abs(this.pitch) > 40)
 		{
 			return true;
 		}
@@ -3976,8 +4046,8 @@ public void object::moveAndDestroy(object target)
 		{
 			left = leftPoint(20);
 			right = rightPoint(20);
-			left.z = this.position.z;
-			right.z = this.position.z;
+			left.z = this.position.z + 2;
+			right.z = this.position.z + 2;
 			if (checkLOS(left,target.position) && distance2Ant(left) > com.safeAnt)
 			{
 				Message("Line of sight blocked, fly to left side");
@@ -4504,8 +4574,8 @@ public bool object::checkLOS(point bot_position, point ant_position)
 	
 	point p;
 	
-	// Loop through every 0.5 meter from bot position to ant position
-	//for (float t = 2.0; t < end; t += 0.5)
+	// Loop through every 1 meter from bot position to ant position
+	//for (float t = 2.0; t < end; t += 1)
 	for (float t = 2.0; t < end; t += 1)
 	{
 		p.x = bot_position.x + dx * t;
@@ -4567,14 +4637,12 @@ public bool object::isFlat(point p, float radius)
 	return true;
 }
 
-public bool object::isLandingPoint(point p)
+public bool object::isSafeLandingPoint(point p)
 {
 	SatCom com();
 	
-	if (!isFlat(p,com.safeFlatGround)) return false;
 	if (distance2DangerPlant(p) < com.safeRoot) return false;
 	if (distance2Quartz(p) < com.safeRoot) return false;
-	//if (distance2Ant(p) < com.safeAnt) return false;
 	if (!checkLOS(p)) return false;
 	return true;
 }
@@ -4625,39 +4693,10 @@ public point object::searchSafeLZ(point botPos)
 			
 			// === CANDIDATE CHECK ===
 			float candidateZ = getNodeZ(idx);
-			if (candidateZ < com.safeTopo) continue;
 			if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && candidateZ > botPos.z + 3) continue;
-			
-			point center;
-			center.x = getNodeX(idx);
-			center.y = getNodeY(idx);
-			center.z = candidateZ;
-			
-			if (isLandingPoint(center))
-			{
-				return center;
-			}
-			
-			// === 4 MIDPOINTS (sqrt(50)   7.07m) ===
-			float radius_mid = 7.07;
-			float dirX[] = {1, 1, -1, -1};
-			float dirY[] = {1, -1, -1, 1};
-			
-			for (int d = 0; d < 4; d++)
-			{
-				point p;
-				p.x = center.x + dirX[d] * radius_mid;
-				p.y = center.y + dirY[d] * radius_mid;
-				p.z = topo(p);
-				
-				if (p.z < com.safeTopo) continue;
-				if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && p.z > botPos.z + 3) continue;
-				
-				if (isLandingPoint(p))
-				{
-					return p;
-				}
-			}
+			if (com.landingNode[idx] == 0) continue;
+			point p = getLandingPoint(idx);
+			if (isSafeLandingPoint(p)) return p;
 		}
 	}
 	
@@ -4794,6 +4833,7 @@ public void object::landAndRest(point p)
     float dis;
     float dif;
     float ang;
+	object enemy;
 	
 	plantFlag(p,52);
 	
@@ -4809,13 +4849,12 @@ public void object::landAndRest(point p)
 		dir = direction(p);
 		motor(1-dir/22.5,1+dir/22.5);
 		
-		//checkEnemy();
-		
 		avoidObstacle();
 		
 		dis2d = distance2d(this.position,p);
 	}
 	
+	checkEnemy();
 	motor(0,0);
 	
 	while (this.temperature > 0)
@@ -5074,9 +5113,9 @@ public void object::airAttack(object o,float radius)
 		wait(0.2);
 	}
 	
-	object enemy,root,center;
-	float dir,dis2Base,dis2Enemy,detectRange;
-	point p,last,start,left,right;
+	object target,enemy,root,center;
+	float dir,dis2d,dis2Base,dis2Enemy,detectRange;
+	point p,hit,last,start,left,right;
 	
 	center = o;
 	detectRange = radius;
@@ -5090,22 +5129,84 @@ public void object::airAttack(object o,float radius)
 		// check if this level has wasp
 		if (!com.detectedWasp && radar(AlienWasp) != null) com.detectedWasp = true;
 		
-		enemy = search(com.enemies,center.position,0,detectRange);
+		target = search(com.enemies,center.position,0,detectRange);
 		
-		if (enemy == null && com.detectedWorm)
+		if (target == null && com.detectedWorm)
 		{
-			enemy = Radar(AlienWorm);
+			target = Radar(AlienWorm);
 		}
 		
 		// if no enemy, mission is completed
-		if (enemy == null) break;
+		if (target == null) break;
 		
-		if (enemy.category == AlienWorm && topo(enemy.position) < 0)
+		if (target.category == AlienWorm && topo(target.position) < 0)
 		{
 			Message("Target is underwater, wait for next target");
 			continue;
 		}
-		moveAndDestroy(enemy);
+		
+		if (target.category == AlienWasp) fly2Wasp(target);
+		else fly(target.position);
+		
+		dis2d = distance2d(this.position,target.position);
+	
+		if (target.category == AlienWasp)
+		{
+			if (dis2d > com.attackRange) continue;
+			motor(0,0);
+			aimAndFire(target);
+			continue;
+		}
+		
+		if (dis2d > com.safeAnt)
+		{
+			if (target.category == AlienWasp) continue;
+			hit = sensor(1.5,target.position);
+			if (hit.z > 0)
+			{
+				motor(-0.1,-0.1);
+				escapeMountain(this.position,target.position);
+			}
+		}
+		else if (dis2d <= com.attackRange) // if within range
+		{
+			if (!checkLOS(target))
+			{
+				left = leftPoint(20);
+				right = rightPoint(20);
+				left.z = this.position.z + 2;
+				right.z = this.position.z + 2;
+				if (checkLOS(left,target.position) && distance2Ant(left) > com.safeAnt)
+				{
+					Message("Line of sight blocked, fly to left side");
+					flySideways(75);
+				}
+				else if (checkLOS(right,target.position) && distance2Ant(right) > com.safeAnt)
+				{
+					Message("Line of sight blocked, fly to right side");
+					flySideways(-75);
+				}
+				else
+				{
+					// Could not find new position with LOS, fly to side with lower topo and return to try again.
+					if (topo(left) < topo(right))
+					{
+						if (distance2Ant(left) < com.safeAnt) continue;
+						Message("Line of sight blocked, fly to left side");
+						flySideways(75);
+					}
+					else
+					{
+						if (distance2Ant(right) < com.safeAnt) continue;
+						Message("Line of sight blocked, fly to right side");
+						flySideways(-75);
+					}
+					continue;
+				}
+			}
+			motor(0,0);
+			aimAndFire(target);
+		}
 	}
 	
 	gotoSafeLZ();
@@ -5571,7 +5672,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 			// Both bots cannot climb steep walls, and fly bot stays in valleys
 			if (nextZ > maxOpenZ) continue; // if higher than startPoint or targetPoint, block this neighbor node
 			if (nextZ > 0 && currentZ > 0 && nextZ - currentZ > moveCost[d]*0.6) continue; // if angle from current to next is steeper than 31 degrees, block this neighbor node tan(31) = 0.6
-			if (parent[current] != -1 && nextZ > 0 && parentZ > 0 && nextZ - parentZ > 12) continue;  // if angle  from parent to current to next is continously  steeper than 31 degrees , block this neighbor node
+			if (parent[current] != -1 && nextZ > 0 && parentZ > 0 && nextZ - parentZ > 12) continue;  // if angle from parent to current to next is continously  steeper than 31 degrees , block this neighbor node
 			
 			tentativeG = gCost[current] + sqrt(moveCost[d]*moveCost[d] + (nextZ - currentZ)*(nextZ - currentZ));
 			
@@ -5660,6 +5761,9 @@ public void object::escapeMountain(point botPoint, point target)
 		jet(-0.01);
 	}
 	
+	// check if land on slope before call searchEscapeMountainPath
+	if (abs(this.pitch) > 40) return;
+	
 	turn(direction(target));
 	
 	motor(0,0);
@@ -5668,9 +5772,6 @@ public void object::escapeMountain(point botPoint, point target)
 	float dis;
     float dif;
     float ang;
-	
-	// check if land on slope before call searchEscapeMountainPath
-	if (abs(this.pitch) > 30) return;
 	
 	Message("Searching for path...");
 	float t = abstime();
@@ -5714,7 +5815,7 @@ public void object::escapeMountain(point botPoint, point target)
 			if (this.temperature > com.temperatureThreshold)
 			{
 				gotoSafeLZ();
-				if (pathLength < 20) return;
+				return;
 			}
 			
 			dis = distance(this.position,target);
