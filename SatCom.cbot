@@ -1,5 +1,5 @@
 /*
-09 September 2026
+10 September 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -72,6 +72,126 @@ public void object::Mission()
 extern void object::houston()
 {
 	SatCom com();
+}
+
+public class MinHeap
+{
+	int nodes[];
+	float costs[];
+	int size;
+	
+	void MinHeap()
+	{
+		size = 0;
+	}
+	
+	void clear()
+	{
+		size = 0;
+	}
+	
+	void push(int node, float cost)
+	{
+		int i = size;
+		int parent;
+		int parentNode;
+		float parentCost;
+		
+		size++;
+		
+		// Move parent down
+		while (i > 0)
+		{
+			parent = (i - 1) / 2;
+			
+			if (cost >= costs[parent])
+			{
+				break;
+			}
+			
+			nodes[i] = nodes[parent];
+			costs[i] = costs[parent];
+			
+			i = parent;
+		}
+		
+		nodes[i] = node;
+		costs[i] = cost;
+	}
+	
+	float peekCost()
+	{
+		if (size == 0) return 999999;
+		return costs[0];
+	}
+	
+	int pop()
+	{
+		int result;
+		int i;
+		int left;
+		int right;
+		int smallest;
+		int lastNode;
+		float lastCost;
+		
+		if (size == 0)
+		{
+			return -1;
+		}
+		
+		result = nodes[0];
+		
+		size--;
+		
+		if (size == 0)
+		{
+			return result;
+		}
+		
+		lastNode = nodes[size];
+		lastCost = costs[size];
+		
+		i = 0;
+		
+		while (true)
+		{
+			left = i * 2 + 1;
+			right = left + 1;
+			
+			if (left >= size)
+			{
+				break;
+			}
+			
+			smallest = left;
+			
+			if (right < size && costs[right] < costs[left])
+			{
+				smallest = right;
+			}
+			
+			if (lastCost <= costs[smallest])
+			{
+				break;
+			}
+			
+			nodes[i] = nodes[smallest];
+			costs[i] = costs[smallest];
+			
+			i = smallest;
+		}
+		
+		nodes[i] = lastNode;
+		costs[i] = lastCost;
+		
+		return result;
+	}
+	
+	bool empty()
+	{
+		return size == 0;
+	}
 }
 
 public class Queue
@@ -944,55 +1064,73 @@ public float getNodeY(int idx)
 public float getNodeZ(int idx)
 {
 	SatCom com();
+	
+	if (com.gridZ[idx] < 999) return com.gridZ[idx];
+	
+	point p;
+	p.x = getNodeX(idx);
+	p.y = getNodeY(idx);
+	com.gridZ[idx] = topo(p);
+	return com.gridZ[idx];
+}
+
+public float cacheLandingPoint(int idx)
+{
+	SatCom com();
+	
+	if (com.gridZ[idx] < 999) return com.gridZ[idx];
+	
+	// Cache this node and landing point
 	point c;
-	
-	if (com.gridZ[idx] < 999)
-	{
-		return com.gridZ[idx];
-	}
-	
-	c.x = getNodeX(idx);
-	c.y = getNodeY(idx);
-	c.z = topo(c);
-	com.gridZ[idx] = c.z;
+	c = getNodePoint(idx);
 	com.cachedNodes++;
 	if (c.z < 0)
 	{
 		com.waterNodes++;
 	}
-	else
+	else if (c.z >= com.safeTopo)
 	{
-		if (c.z >= com.safeTopo)
+		if (isFlat(c,com.safeFlatGround))
 		{
-			if (isFlat(c,com.safeFlatGround))
+			com.landingNode[idx] = 1;  // Node itself is flat for landing
+		}
+		else // check 4 points
+		{
+			// === 4 MIDPOINTS (sqrt(50)   7.07m) ===
+			float radius_mid = 7.07;
+			float dirX[] = {1, 1, -1, -1};
+			float dirY[] = {1, -1, -1, 1};
+			point p;
+			
+			for (int d = 0; d < 4; d++)
 			{
-				com.landingNode[idx] = 1;  // Node itself is flat for landing
-			}
-			else // check 4 points
-			{
-				// === 4 MIDPOINTS (sqrt(50)   7.07m) ===
-				float radius_mid = 7.07;
-				float dirX[] = {1, 1, -1, -1};
-				float dirY[] = {1, -1, -1, 1};
+				p.x = c.x + dirX[d] * radius_mid;
+				p.y = c.y + dirY[d] * radius_mid;
+				p.z = topo(p);
 				
-				for (int d = 0; d < 4; d++)
+				if (p.z < com.safeTopo) continue;
+				if (isFlat(p,com.safeFlatGround))
 				{
-					point p;
-					p.x = c.x + dirX[d] * radius_mid;
-					p.y = c.y + dirY[d] * radius_mid;
-					p.z = topo(p);
-					
-					if (p.z < com.safeTopo) continue;
-					if (isFlat(p,com.safeFlatGround))
-					{
-						com.landingNode[idx] = 2 + d; // one of 4 mid points is flat for landing
-						break;
-					}
+					com.landingNode[idx] = 2 + d; // one of 4 mid points is flat for landing
+					break;
 				}
 			}
 		}
 	}
 	return com.gridZ[idx];
+}
+
+public void object::cacheGrid()
+{
+	SatCom com();
+	
+	if (com.cachedNodes >= com.totalNodes) return;
+	
+	// Get next node in the spiral
+	int idx = getSpiralNode(com.cachedNodes);
+	
+	if (idx == -1) return;
+	float z = cacheLandingPoint(idx);
 }
 
 public point getLandingPoint(int idx)
@@ -1837,21 +1975,6 @@ public int getSpiralNode(int n)
 	}
 	
 	return y * gridSize + x;
-}
-
-public void object::cacheGrid()
-{
-	SatCom com();
-	
-	if (com.cachedNodes >= com.totalNodes) return;
-	
-	// Get next node in the spiral
-	int idx = getSpiralNode(com.cachedNodes);
-	
-	if (idx != -1)
-	{
-		float z = getNodeZ(idx); // Cache this node
-	}	
 }
 
 public bool object::isStuck()
@@ -3213,7 +3336,7 @@ public void object::avoidNearestObject(float m)
 	
 	if (nearestDistance <= 1)
 	{
-		if (-15 <= directToObj || directToObj <= 15)
+		if (-15 <= directToObj && directToObj <= 15)
 		{
 			forwardOrBackward = -1;
 			Message("Nearest Object right infront, move backward "+m*forwardOrBackward);
@@ -3731,7 +3854,14 @@ public point object::freePoint(point c, float radius, int numPoints)
 		p.y = c.y + radius * sin(angle);
 		p.z = topo(p);
 		nearestObstacle = search(com.obstacles,p);
-		distanceToObstacle = distance2d(p, nearestObstacle.position);
+		if (nearestObstacle == null)
+		{
+			distanceToObstacle = 999;
+		}
+		else
+		{
+			distanceToObstacle = distance2d(p,nearestObstacle.position);
+		}
 		if (distanceToObstacle > maxDistance && p.z > 1.5)
 		{
 			foundFreePoint = true;
@@ -4692,7 +4822,7 @@ public point object::searchSafeLZ(point botPos)
 			int idx = gridY * com.gridSize + gridX;
 			
 			// === CANDIDATE CHECK ===
-			float candidateZ = getNodeZ(idx);
+			float candidateZ = cacheLandingPoint(idx);
 			if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && candidateZ > botPos.z + 3) continue;
 			if (com.landingNode[idx] == 0) continue;
 			point p = getLandingPoint(idx);
@@ -4830,13 +4960,15 @@ public void object::landAndRest(point p)
 	float dis2d;
 	
 	float dir;
-    float dis;
-    float dif;
-    float ang;
+	float dis;
+	float dif;
+	float ang;
 	object enemy;
 	
 	plantFlag(p,52);
 	
+	checkEnemy();
+	jet(1);
 	turn(direction(p));
 	dis2d = distance2d(this.position,p);
 	
@@ -5579,8 +5711,11 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	int parent[totalNodes];
 	float gCost[totalNodes];
 	float fCost[totalNodes];
-	int openList[totalNodes];
-	int openSize = 0;
+	
+	// Use MinHeap for open list
+	MinHeap heap = new MinHeap();
+	heap.size = 0;
+	
 	int maxOpenCount = 0;
 	
 	for (int i = 0; i < totalNodes; i++)
@@ -5594,55 +5729,56 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	gCost[startIndex] = 0;
 	fCost[startIndex] = distance(startPoint, targetPoint);
 	
-	openList[openSize] = startIndex;
-	openSize = openSize + 1;
+	heap.push(startIndex, fCost[startIndex]);
 	state[startIndex] = 1;  // IN_OPEN
 	
 	int foundPath = 0;
 	int meetNode = -1;
 	int nodesExplored = 0;
 	
-	int bestIdx;
-	float bestF;
-	int bestOpenIdx;	
 	int idx;
 	int current, next;
 	float parentZ, currentZ, nextZ;
 	
 	float tentativeG;
 	
+	bool restOnSlope = true;
+	point behind,left,right;
+	
 	Debug("A* start main loop with cachedNodes " + com.cachedNodes);
 	// ---------- MAIN LOOP ----------
-	while (foundPath == 0 && openSize > 0)
+	while (foundPath == 0 && !heap.empty())
 	{
-		checkEnemy();
-		
-		if (openSize > maxOpenCount) maxOpenCount = openSize;
-		
-		// Find best node
-		bestIdx = -1;
-		bestF = 999999;
-		bestOpenIdx = -1;
-		
-		for (int i = 0; i < openSize; i++)
+		// check if rest on slope
+		if (restOnSlope)
 		{
-			idx = openList[i];
-			if (fCost[idx] < bestF)
+			if (flatground(this.position,0.1) < 0.1)
 			{
-				bestF = fCost[idx];
-				bestIdx = idx;
-				bestOpenIdx = i;
+				behind = behindPoint(1.5);
+				left = leftPoint(this.position,behind);
+				right = rightPoint(this.position,behind);
+				motor(speed(left),speed(right));
+			}
+			else // rest on flat ground
+			{
+				motor(0,0);
+				restOnSlope = false;
 			}
 		}
 		
+		if (heap.size > maxOpenCount) maxOpenCount = heap.size;
+		
+		// Get the smallest cost from the heap (peek) then pop
+		float minCost = heap.peekCost();
+		int bestIdx = heap.pop();
+		
 		if (bestIdx == -1) break;
 		
-		// Remove from open
-		openList[bestOpenIdx] = openList[openSize - 1];
-		openSize = openSize - 1;
-		
-		// If this node is already CLOSED (stale entry), skip it
+		// Skip stale entries:
+		// - Already closed
+		// - Or fCost does not match the popped cost (outdated duplicate)
 		if (state[bestIdx] == 2) continue;
+		if (fCost[bestIdx] != minCost) continue;
 		
 		// Mark as CLOSED (expanded)
 		state[bestIdx] = 2;
@@ -5687,17 +5823,20 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 				if (state[next] == 2)
 				{
 					state[next] = 1;  // Re-open: move back to IN_OPEN
-					openList[openSize] = next;
-					openSize = openSize + 1;
+					heap.push(next, fCost[next]);
 				}
 				else if (state[next] == 0)  // UNVISITED
 				{
 					state[next] = 1;  // First time: add to IN_OPEN
-					openList[openSize] = next;
-					openSize = openSize + 1;
+					heap.push(next, fCost[next]);
 				}
 				// If state[next] == 1 (IN_OPEN), it's already in the list.
-				// We just updated its cost, no need to add it again.
+				// We just updated its cost, so push a new entry with lower cost (duplicate).
+				else if (state[next] == 1)
+				{
+					// Push new entry with improved cost; old entry will be skipped when popped
+					heap.push(next, fCost[next]);
+				}
 			}
 		}
 	}
@@ -5770,8 +5909,8 @@ public void object::escapeMountain(point botPoint, point target)
 	
 	float dir;
 	float dis;
-    float dif;
-    float ang;
+	float dif;
+	float ang;
 	
 	Message("Searching for path...");
 	float t = abstime();
@@ -5815,7 +5954,7 @@ public void object::escapeMountain(point botPoint, point target)
 			if (this.temperature > com.temperatureThreshold)
 			{
 				gotoSafeLZ();
-				return;
+				if (pathLength < 20) return;
 			}
 			
 			dis = distance(this.position,target);
