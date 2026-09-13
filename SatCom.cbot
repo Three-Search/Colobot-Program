@@ -345,7 +345,8 @@ public class SatCom
 	static int[] enemies;
 	static bool detectedSpaceShip = false;
 	static bool detectedRuinSpaceShip = false;
-	static bool detectedDangerPlant = false;
+	static bool detectedRuinBotFactory = false;
+	static bool detectedGraviPlant = false;
 	static bool detectedQuartz = false;
 	static bool detectedAnt = false;
 	static bool detectedSpider = false;
@@ -405,7 +406,8 @@ public class SatCom
 	static float gridZ[6561];  // Store actual heights
 	static int cachedNodes;
 	static int waterNodes;
-	static int landingNode[6561]; // 0 = node is water node  or not flat for landing, 1 = node itself is flat for landing, 2-5 = midpoint d (0-3) is flat for landing
+	static int spiralCount;
+	static int landingNode[6561]; // -1 = not yet compute, 0 = node is water node  or not flat for landing, 1 = node itself is flat for landing, 2-5 = midpoint d (0-3) is flat for landing
 	
 	static string debugBuffer[100];
 	static int debugIndex = 0;
@@ -452,6 +454,8 @@ public class SatCom
 		spaceShip = radar(SpaceShip);
 		if (spaceShip != null) detectedSpaceShip = true;
 		if (radar(611) != null || radar(612) != null) detectedRuinSpaceShip = true;
+		if (radar(606) != null) detectedRuinBotFactory = true;
+		if (radar(GraviPlant) != null) detectedGraviPlant = true;
 		botFactory = radar(BotFactory);
 		researchCenter = radar(ResearchCenter);
 		repairCenter = radar(RepairCenter);
@@ -488,8 +492,6 @@ public class SatCom
 		{
 			dangerPlants[nr++] = i;
 		}
-		dangerPlants[nr++] = 715; // GraviPlant
-		if (radar(dangerPlants) != null) detectedDangerPlant = true;
 		
 		nr = 0;
 		for (int i = 700; i < 704; i++)
@@ -982,14 +984,14 @@ public class SatCom
 		CATEGORY_NAMES[910] = "Home";
 		
 		// init gridZ
-		gridZ[totalNodes-1] = 999;
 		for (int i = 0; i < totalNodes; i++)
 		{
 			gridZ[i] = 999;
-			landingNode[i] = 0;
+			landingNode[i] = -1;
 		}
 		cachedNodes = 0; // ready to cache
 		waterNodes = 0;
+		spiralCount = 0;
 	}
 		
 	void initFlatSpacesAroundShip(float flatmin, float radius, int numPoints)
@@ -1071,24 +1073,37 @@ public float getNodeZ(int idx)
 	p.x = getNodeX(idx);
 	p.y = getNodeY(idx);
 	com.gridZ[idx] = topo(p);
+	com.cachedNodes++;
+	if (com.gridZ[idx] < 0) com.waterNodes++;
 	return com.gridZ[idx];
 }
 
-public float cacheLandingPoint(int idx)
+public void cacheGrid()
 {
 	SatCom com();
 	
-	if (com.gridZ[idx] < 999) return com.gridZ[idx];
+	if (com.spiralCount >= com.totalNodes) return;
 	
-	// Cache this node and landing point
+	// Get next node in the spiral
+	int idx = getSpiralNode(com.spiralCount);
+	if (idx == -1) return;
+	com.spiralCount++;
+	float z = cacheGrid(idx);
+}
+
+public float cacheGrid(int idx)
+{
+	SatCom com();
+	
+	// if node is cached and landingNode is computed, early return.
+	if (com.gridZ[idx] < 999 && com.landingNode[idx] > -1) return com.gridZ[idx];
+	
 	point c;
 	c = getNodePoint(idx);
-	com.cachedNodes++;
-	if (c.z < 0)
-	{
-		com.waterNodes++;
-	}
-	else if (c.z >= com.safeTopo)
+	
+	// not yet compute landingNode, compute it
+	com.landingNode[idx] = 0;
+	if (c.z >= com.safeTopo)
 	{
 		if (isFlat(c,com.safeFlatGround))
 		{
@@ -1120,19 +1135,6 @@ public float cacheLandingPoint(int idx)
 	return com.gridZ[idx];
 }
 
-public void object::cacheGrid()
-{
-	SatCom com();
-	
-	if (com.cachedNodes >= com.totalNodes) return;
-	
-	// Get next node in the spiral
-	int idx = getSpiralNode(com.cachedNodes);
-	
-	if (idx == -1) return;
-	float z = cacheLandingPoint(idx);
-}
-
 public point getLandingPoint(int idx)
 {
 	SatCom com();
@@ -1145,7 +1147,7 @@ public point getLandingPoint(int idx)
 	
 	int d = com.landingNode[idx];
 	
-	if (d == 0)
+	if (d <= 0)
 	{
 		p.x = 0;
 		p.y = 0;
@@ -1250,7 +1252,10 @@ public int getNeighborIndex(int idx, int d)
 
 public void object::missionComplete()
 {
+	SatCom com();
+	
 	Message("Mission completed");
+	Debug("spiralCount " + com.spiralCount+", cachedNodes "+com.cachedNodes+", waterNodes "+com.waterNodes+", temperatetureThreshold " +com.temperatureThreshold);
 	PrintDebug();
 }
 
@@ -1574,16 +1579,16 @@ public float object::distance2Ants(point p)
 	}
 }
 
-public float object::distance2DangerPlant(point p)
+public float object::distance2GraviPlant(point p)
 {
 	SatCom com();
 	
-	if (!com.detectedDangerPlant)
+	if (!com.detectedGraviPlant)
 	{
 		return 999;
 	}
 	
-	object o = search(com.dangerPlants,p);
+	object o = search(GraviPlant,p);
 	return distance2d(p,o.position);
 }
 
@@ -1815,8 +1820,8 @@ public int object::jetPower(point p)
 			{
 				if (this.position.z < p.z + 3 && this.position.z < 3)
 				{
-					jet(0.8);
-					Debug("Optimal height, within attack range, flying on water. if (this.position.z < p.z + 3) " + this.position.z + ", p.z " + p.z);
+					jet(0.7);
+					//Debug("Optimal height, within attack range, flying on water. if (this.position.z < p.z + 3) " + this.position.z + ", p.z " + p.z);
 					return 0;
 				}
 				else
@@ -1847,13 +1852,13 @@ public int object::jetPower(point p)
 			{
 				if (this.position.z > p.z + h && this.position.z > p.z + 4 && this.position.z > 4)
 				{
-					jet(-0.4);
-					Debug("Bot is higher than optimal height, within attack range, flying on water. if (this.position.z > p.z + h && this.position.z > p.z + 4) " + this.position.z + ", p.z " + p.z + ", h " + h);
+					jet(-0.3);
+					//Debug("Bot is higher than optimal height, within attack range, flying on water. if (this.position.z > p.z + h && this.position.z > p.z + 4) " + this.position.z + ", p.z " + p.z + ", h " + h);
 					return 0;
 				}
 				else if (this.position.z < 3)
 				{
-					jet(0.8);
+					jet(0.7);
 					return 0;
 				}
 				else
@@ -1864,7 +1869,7 @@ public int object::jetPower(point p)
 			}
 			else // on land
 			{
-				jet(-0.4);
+				jet(-0.3);
 				return 0;
 			}
 		}
@@ -1875,13 +1880,13 @@ public int object::jetPower(point p)
 			{
 				if (this.position.z > p.z + h && this.position.z > 4)
 				{
-					jet(-0.4);
-					Debug("Bot is higher than optimal height, not within attack range, flying on water. if (this.position.z > p.z + h && && this.position.z > 4) " + this.position.z + ", p.z " + p.z + ", h" + h);
+					jet(-0.3);
+					//Debug("Bot is higher than optimal height, not within attack range, flying on water. if (this.position.z > p.z + h && && this.position.z > 4) " + this.position.z + ", p.z " + p.z + ", h" + h);
 					return 0;
 				}
 				else if (this.position.z < 3)
 				{
-					jet(0.8);
+					jet(0.7);
 					return 0;
 				}
 				else
@@ -1894,7 +1899,7 @@ public int object::jetPower(point p)
 			{
 				if (this.altitude > 2)
 				{
-					jet(-0.4);
+					jet(-0.3);
 					return 0;
 				}
 				else
@@ -1906,7 +1911,7 @@ public int object::jetPower(point p)
 		}
 	}
 	
-	jet(0.8);
+	jet(0.7);
 	return 0;
 }
 
@@ -2619,7 +2624,7 @@ public void object::moveObjToObj(int c1,int c2)
 	
 	if (c1 == PowerCell && c2 != PowerCaptor)
 	{
-		if (this.load.energyLevel < 1)
+		if (this.load != null && this.load.energyLevel < 1)
 		{
 			chargeCell();
 		}
@@ -4606,7 +4611,7 @@ public void object::aimAndFire(object target)
 				wait(burstInterval);
 			}
 			fireTime = abstime() + it + 0.2; // wait until round hit (or not)
-			Debug("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
+			//Debug("Burst fired with advanced aim: angle " + a + ", azimuth " + azimuth + ", range " + range);
 		}
 		else if (this.category != WingedShooter && this.category != WingedOrgaShooter)
 		{
@@ -4657,7 +4662,7 @@ public bool object::fireAt(point p)
 		aim(-aimpitch,-aimangle);
 		fire(0.05);
 		//Message("Fired with emergency aim: angle " + aimpitch + ", azimuth " + aimangle + ", range " + dist);
-		Debug("Fired with emergency aim: angle " + aimpitch + ", azimuth " + aimangle + ", range " + dist);
+		//Debug("Fired with emergency aim: angle " + aimpitch + ", azimuth " + aimangle + ", range " + dist);
 		return true;
 	}
 	return false;
@@ -4723,7 +4728,8 @@ public bool object::checkLOS(point bot_position, point ant_position)
 			return false;
 		}
 	}
-	else
+	
+	if (com.detectedRuinBotFactory)
 	{
 		object r = search(606,ant_position,0,10); // RuinBotFactory
 		if (r != null && distance2d(bot_position, r.position) + distance2d(r.position, ant_position) - distance2d(bot_position, ant_position) < 0.5)
@@ -4732,6 +4738,7 @@ public bool object::checkLOS(point bot_position, point ant_position)
 			return false;
 		}
 	}
+	
 	return true;
 }
 
@@ -4771,9 +4778,23 @@ public bool object::isSafeLandingPoint(point p)
 {
 	SatCom com();
 	
-	if (distance2DangerPlant(p) < com.safeRoot) return false;
-	if (distance2Quartz(p) < com.safeRoot) return false;
+	object o;
+	
+	if (com.detectedGraviPlant)
+	{
+		o = search(GraviPlant,p,0,com.safeAnt);
+		if (o != null) return false; // GraviPlant
+	}
+	
+	o = search(Any,p,0,com.safeRoot);
+	if (o != null)
+	{
+		if (85 <= o.category && o.category <= 89) return false; // Ferns
+		if (700 <= o.category && o.category <= 703) return false; // Quartz
+	}
+	
 	if (!checkLOS(p)) return false;
+	
 	return true;
 }
 
@@ -4821,12 +4842,14 @@ public point object::searchSafeLZ(point botPos)
 			
 			int idx = gridY * com.gridSize + gridX;
 			
-			// === CANDIDATE CHECK ===
-			float candidateZ = cacheLandingPoint(idx);
-			if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && candidateZ > botPos.z + 3) continue;
-			if (com.landingNode[idx] == 0) continue;
-			point p = getLandingPoint(idx);
-			if (isSafeLandingPoint(p)) return p;
+			float z = cacheGrid(idx);
+			if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && z > botPos.z + 3) continue;
+			if (com.landingNode[idx] > 0)
+			{
+				point p = getLandingPoint(idx);
+				if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && p.z > botPos.z + 3) continue;
+				if (isSafeLandingPoint(p)) return p;
+			}
 		}
 	}
 	
@@ -4842,8 +4865,9 @@ public void object::gotoSafeLZ(object o)
 	SatCom com();
 	
 	float t = abstime();
-	ipf(10000);
+	
 	jet(1);
+	ipf(10000);
 	point landingPoint = searchSafeLZ(this.position);
 	ipf(100);
 	if (landingPoint.x == 0 && landingPoint.y == 0 && landingPoint.z == 0)
@@ -4930,10 +4954,10 @@ public void object::avoidObstacle()
 		avoidStuck();
 	}
 	
-	if (!com.detectedDangerPlant || this.category == LeggedShooter || this.category == LeggedOrgaShooter) return;
+	if (!com.detectedGraviPlant || this.category == LeggedShooter || this.category == LeggedOrgaShooter) return;
 	
-	root = radar(com.dangerPlants,0,360,0,com.safeAnt);
-	if (root != null && root.category == GraviPlant)
+	root = radar(GraviPlant,0,360,0,com.safeAnt);
+	if (root != null)
 	{
 		dir = direction(root.position);
 		if (distance2d(this.position,root.position) <= com.safeRoot && -60 < dir && dir < 60)
@@ -4977,9 +5001,13 @@ public void object::landAndRest(point p)
 		dis = distance(this.position,p);
 		dif = p.z-this.position.z;
 		ang = asin(dif/dis);
-		jet(1-(ang/-20));
+		if (8 <= dis2d && dis2d <= 10) jet(1);
+		else jet(1-(ang/-20));
 		dir = direction(p);
 		motor(1-dir/22.5,1+dir/22.5);
+		
+		enemy = search(com.ants,p,0,com.attackRange);
+		if (enemy != null) checkEnemy();
 		
 		avoidObstacle();
 		
@@ -5399,9 +5427,9 @@ public void object::airGuard(object center, float radius)
 				continue;
 			}
 			
-			if (com.detectedDangerPlant)
+			if (com.detectedGraviPlant)
 			{
-				root = search(com.dangerPlants,enemy.position,0,com.attackRange);
+				root = search(GraviPlant,enemy.position,0,com.attackRange);
 				if (root != null)
 				{
 					if (distance2d(this.position,root.position) > com.safeAnt && distance2d(this.position,root.position) < distance2d(this.position,enemy.position))
@@ -5695,7 +5723,6 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	float maxOpenZ	= max(startPoint.z,targetPoint.z) + (this.category == WingedShooter || this.category == WingedOrgaShooter ? 5 : 14);
 	
 	if (com.detectedSpaceShip && maxOpenZ < com.spaceShip.position.z) maxOpenZ = com.spaceShip.position.z;
-	Debug("A* maxOpenZ " + maxOpenZ);
 	
 	if (startIndex == targetIndex)
 	{
@@ -5721,11 +5748,12 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	for (int i = 0; i < totalNodes; i++)
 	{
 		state[i] = 0;	  // UNVISITED
-		parent[i] = -1;
-		gCost[i] = 999999;
-		fCost[i] = 999999;
+		//parent[i] = -1;
+		//gCost[i] = 999999;
+		//fCost[i] = 999999;
 	}
 	
+	parent[startIndex] = -1;
 	gCost[startIndex] = 0;
 	fCost[startIndex] = distance(startPoint, targetPoint);
 	
@@ -5742,7 +5770,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	
 	float tentativeG;
 	
-	bool restOnSlope = true;
+	bool restOnSlope = ((this.category == WingedShooter || this.category == WingedOrgaShooter) ? true : false);
 	point behind,left,right;
 	
 	Debug("A* start main loop with cachedNodes " + com.cachedNodes);
@@ -5809,6 +5837,14 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 			if (nextZ > maxOpenZ) continue; // if higher than startPoint or targetPoint, block this neighbor node
 			if (nextZ > 0 && currentZ > 0 && nextZ - currentZ > moveCost[d]*0.6) continue; // if angle from current to next is steeper than 31 degrees, block this neighbor node tan(31) = 0.6
 			if (parent[current] != -1 && nextZ > 0 && parentZ > 0 && nextZ - parentZ > 12) continue;  // if angle from parent to current to next is continously  steeper than 31 degrees , block this neighbor node
+			
+			// NEW: init other arrays on first touch
+			if (state[next] == 0)
+			{
+				parent[next] = -1;
+				gCost[next] = 999999;
+				fCost[next] = 999999;
+			}
 			
 			tentativeG = gCost[current] + sqrt(moveCost[d]*moveCost[d] + (nextZ - currentZ)*(nextZ - currentZ));
 			
@@ -5915,8 +5951,6 @@ public void object::escapeMountain(point botPoint, point target)
 	Message("Searching for path...");
 	float t = abstime();
 	ipf(10000);
-	//point pathRawPoints[] = searchEscapeMountainPath(this.position, target);
-	//point pathPoints[] = simplifyPath(pathRawPoints,0.5);
 	point pathPoints[] = searchEscapeMountainPath(this.position, target);
 	ipf(100);
 	int pathLength = sizeof(pathPoints);
