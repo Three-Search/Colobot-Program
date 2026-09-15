@@ -1,5 +1,5 @@
 /*
-10 September 2026
+15 September 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -1466,7 +1466,7 @@ public float object::distance2Ant(point p)
 	}
 	
 	object o = search(AlienAnt,p);
-	if (o == null)
+	if (o == null || o.dead)
 	{
 		return 999;
 	}
@@ -1486,7 +1486,7 @@ public float object::distance2Spider(point p)
 	}
 	
 	object o = search(AlienSpider,p);
-	if (o == null)
+	if (o == null || o.dead)
 	{
 		return 999;
 	}
@@ -1506,7 +1506,7 @@ public float object::distance2Worm(point p)
 	}
 	
 	object o = search(AlienWorm,p);
-	if (o == null)
+	if (o == null || o.dead)
 	{
 		return 999;
 	}
@@ -1519,7 +1519,7 @@ public float object::distance2Worm(point p)
 public float object::distance2Wasp(point p)
 {
 	object o = search(AlienWasp,p);
-	if (o == null)
+	if (o == null || o.dead)
 	{
 		return 999;
 	}
@@ -1554,7 +1554,7 @@ public float object::distance2Enemies(point p)
 	SatCom com();
 	
 	object o = search(com.enemies,p);
-	if (o == null)
+	if (o == null || o.dead)
 	{
 		return 999;
 	}
@@ -1569,7 +1569,7 @@ public float object::distance2Ants(point p)
 	SatCom com();
 	
 	object o = search(com.ants,p);
-	if (o == null)
+	if (o == null || o.dead)
 	{
 		return 999;
 	}
@@ -4684,40 +4684,15 @@ public bool object::checkLOS(point bot_position, point ant_position)
 {
 	SatCom com();
 	
-	if (!com.checkLOS || com.detectedWorm || category == PhazerShooter)
-	{
-		return true;
-	}
+	if (!com.checkLOS || com.detectedWorm || category == PhazerShooter) return true;
 	
-	float total_distance = distance(bot_position, ant_position);
+	float total = distance(bot_position, ant_position);
+	if (total < 3) return true;
 	
-	//if (total_distance < 2)
-	//{
-	//	return true;
-	//}
-	
-	// Calculate the direction vector from the bot to the ant
-	float dx = (ant_position.x - bot_position.x) / total_distance;
-	float dy = (ant_position.y - bot_position.y) / total_distance;
-	float dz = (ant_position.z - bot_position.z) / total_distance;
+	float dx = (ant_position.x - bot_position.x) / total;
+	float dy = (ant_position.y - bot_position.y) / total;
+	float dz = (ant_position.z - bot_position.z) / total;
 	float clearance = ((category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 0.8 : 0.4);
-	float end = total_distance - ((category == WingedOrgaShooter || category == LeggedOrgaShooter) ? 2.0 : 1.0);
-	if (end < 2)
-	{
-		return true;
-	}
-	
-	point p;
-	
-	// Loop through every 1 meter from bot position to ant position
-	//for (float t = 2.0; t < end; t += 1)
-	for (float t = 2.0; t < end; t += 1)
-	{
-		p.x = bot_position.x + dx * t;
-		p.y = bot_position.y + dy * t;
-		p.z = bot_position.z + dz * t;
-		if (topo(p) > p.z + clearance) return false;
-	}
 	
 	if (com.detectedQuartz)
 	{
@@ -4731,14 +4706,107 @@ public bool object::checkLOS(point bot_position, point ant_position)
 	
 	if (com.detectedRuinBotFactory)
 	{
-		object r = search(606,ant_position,0,10); // RuinBotFactory
-		if (r != null && distance2d(bot_position, r.position) + distance2d(r.position, ant_position) - distance2d(bot_position, ant_position) < 0.5)
+		object r = search(606,ant_position,0,10);
+		if (r != null)
 		{
-			Message("LOS is blocked by Ruin BotFactory");
-			return false;
+			float dAR = distance2d(ant_position, r.position);
+			
+			if (dAR < 10) // ant is inside or nearby ruin
+			{
+				float dBR = distance2d(bot_position, r.position);
+				float dBA = distance2d(bot_position, ant_position);
+				
+				// Which side of the ruin is the bot on?
+				float sideDiff = this.orientation + direction(r.position) + 180 - r.orientation;
+				if (sideDiff >  180) sideDiff -= 360;
+				else if (sideDiff < -180) sideDiff += 360;
+				bool botInFront = (abs(sideDiff) <= 60);
+				
+				if (dAR < 3.1) // target is inside ruin factory
+				{
+					// --- Scenario 1 & 4: ant inside ruin footprint ---
+					if (!botInFront)			  // scenario 4: back wall blocks
+					{
+						Message("LOS blocked. Bot is behind ruin factory, target is inside the ruin factory");
+						return false;
+					}
+					// scenario 1: opening lets shot through ? fall through
+				}
+				else // target is nearby ruin factory
+				{
+					// --- Scenarios 2, 3, 5, 6: ant in near ring ---
+					if (dBA > dBR + 3.2)
+					{
+						if (botInFront)
+						{
+							// scenario 3: ant beyond ruin, blocked
+							Message("LOS blocked. Bot is in front of ruin factory, target is behind the ruin factory");
+							return false;
+						}
+						else
+						{
+							// scenario 6: ant beyond ruin, blocked
+							Message("LOS blocked. Bot is behind ruin factory, target is in front of the ruin factory");
+							return false;
+						}
+					}
+					// scenario 2: ant between bot and ruin, clear
+					// scenario 5: ant between bot and ruin, clear
+				}
+			}
+			// dAR >= 10: ant far from ruin, ruin does not matter, fall through to topo loop
 		}
 	}
 	
+	//if (com.detectedRuinBotFactory)
+	//{
+	//	object r = search(606,ant_position,0,10); // RuinBotFactory
+	//	if (r != null && distance2d(bot_position, r.position) + distance2d(r.position, ant_position) - distance2d(bot_position, ant_position) < 0.5)
+	//	{
+	//		Message("LOS is blocked by Ruin BotFactory");
+	//		return false;
+	//	}
+	//}
+	
+	point p;
+	float step = 3, halfStep = 1.5;
+	float phase = total - floor(total / step) * step;
+	
+	// mid-point early out
+	p = mid(bot_position, ant_position);
+	if (topo(p) > p.z + clearance) return false;
+	
+	// close the near-bot gap when phase == 0
+	if (phase < 0.001)
+	{
+		p.x = bot_position.x + dx * halfStep;
+		p.y = bot_position.y + dy * halfStep;
+		p.z = bot_position.z + dz * halfStep;
+		if (topo(p) > p.z + clearance) return false;
+	}
+	
+	// close the near-ant gap when phase > halfStep
+	if (phase > halfStep)
+	{
+		p.x = ant_position.x - dx * halfStep;
+		p.y = ant_position.y - dy * halfStep;
+		p.z = ant_position.z - dz * halfStep;
+		if (topo(p) > p.z + clearance) return false;
+	}
+	
+	for (float t = step; t < total; t += step)
+	{
+		p.x = bot_position.x + dx * t;
+		p.y = bot_position.y + dy * t;
+		p.z = bot_position.z + dz * t;
+		if (topo(p) > p.z + clearance) return false;
+		
+		float ad = t - halfStep + phase;
+		p.x = ant_position.x - dx * ad;
+		p.y = ant_position.y - dy * ad;
+		p.z = ant_position.z - dz * ad;
+		if (topo(p) > p.z + clearance) return false;
+	}
 	return true;
 }
 
@@ -4765,12 +4833,12 @@ public bool object::isFlat(point p, float radius)
 		neighbor.y = p.y + dirY[i] * radius;
 		neighbor.z = topo(neighbor);
 		
-		// If height difference > 0.4m, terrain is not flat
+		// If height difference > 0.25 m, terrain is not flat
 		//if (neighbor.z < 0 || abs(neighbor.z - p.z) > 0.4) return false;
 		if (neighbor.z < com.safeTopo || abs(neighbor.z - p.z) > 0.25) return false;
 	}
 	
-	// All 4 neighbors are within 0.4m height difference
+	// All 4 neighbors are within 0.25 m height difference
 	return true;
 }
 
@@ -4780,18 +4848,15 @@ public bool object::isSafeLandingPoint(point p)
 	
 	object o;
 	
-	if (com.detectedGraviPlant)
-	{
-		o = search(GraviPlant,p,0,com.safeAnt);
-		if (o != null) return false; // GraviPlant
-	}
+	if (distance2GraviPlant(p) < com.safeAnt) return false;
 	
-	o = search(Any,p,0,com.safeRoot);
-	if (o != null)
-	{
-		if (85 <= o.category && o.category <= 89) return false; // Ferns
-		if (700 <= o.category && o.category <= 703) return false; // Quartz
-	}
+	o = search(Any,p,0,5);
+	if (o != null && o.category != 50 && o.category != 51 && o.category != 52) return false;
+	//if (o != null)
+	//{
+	//	if (85 <= o.category && o.category <= 89) return false; // Ferns
+	//	if (700 <= o.category && o.category <= 703) return false; // Quartz
+	//}
 	
 	if (!checkLOS(p)) return false;
 	
@@ -5487,7 +5552,7 @@ public void object::airGuard(object center, float radius)
 	
 	landAndRest(start);
 	missionComplete();
-	errmode(0);
+	errmode(1);
 }
 
 public void object::landAttack()
@@ -5713,6 +5778,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	int startIndex = getNodeIndex(botPoint);
 	int targetIndex = getNodeIndex(target);
 	float moveCost[8] = {10, 14.14, 10, 14.14, 10, 14.14, 10, 14.14};
+	float moveCostSq[8] = {100, 199.9396, 100, 199.9396, 100, 199.9396, 100, 199.9396};
 	
 	point startPoint; startPoint.x = getNodeX(startIndex); startPoint.y = getNodeY(startIndex); startPoint.z = getNodeZ(startIndex);
 	plantFlag(startPoint, 50); // green cross
@@ -5846,13 +5912,19 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 				fCost[next] = 999999;
 			}
 			
-			tentativeG = gCost[current] + sqrt(moveCost[d]*moveCost[d] + (nextZ - currentZ)*(nextZ - currentZ));
+			// performance improve, used precompute moveCostSq[d] = moveCost[d]*moveCost[d] 
+			// tentativeG = gCost[current] + sqrt(moveCost[d]*moveCost[d] + (nextZ - currentZ)*(nextZ - currentZ));
+			tentativeG = gCost[current] + sqrt(moveCostSq[d] + (nextZ - currentZ)*(nextZ - currentZ));
 			
 			if (tentativeG < gCost[next])
 			{
 				gCost[next] = tentativeG;
 				parent[next] = current;
-				nextPoint = getNodePoint(next);
+				// performance improve, reused nextZ instead of calling getNodePoint(next)
+				// nextPoint = getNodePoint(next);
+				nextPoint.x = getNodeX(next);
+				nextPoint.y = getNodeY(next);
+				nextPoint.z = nextZ;
 				fCost[next] = tentativeG + distance(nextPoint, targetPoint);
 				
 				// If this node was CLOSED, RE-OPEN it!
