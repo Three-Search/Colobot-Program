@@ -1369,6 +1369,7 @@ public point object::mid(point p1, point p2, float d)
 	
 	// Calculate the length of the direction vector
 	float length = sqrt(dirX*dirX + dirY*dirY + dirZ*dirZ);
+	if (length < 0.001) return p2;
 	
 	// Normalize the direction vector
 	float unitX = dirX / length;
@@ -2150,7 +2151,7 @@ public bool object::onSpaceShipCone()
 {
 	SatCom com();
 	
-	if (com.spaceShip.position.z + 15 < this.position.z && this.position.z < com.spaceShip.position.z + 30)
+	if (com.detectedSpaceShip && com.spaceShip.position.z + 15 < this.position.z && this.position.z < com.spaceShip.position.z + 30)
 	{
 		return true;
 	}
@@ -4032,6 +4033,7 @@ public point object::leftPoint(point p1, point p2, float dis)
 	
 	// Calculate the length of the vector P1P2
 	float length = distance2d(p1, p2);
+	if (length < 0.001) return p2;
 	
 	// Calculate the normalized perpendicular vectors
 	float perp1x = (dy / length) * dis;
@@ -4081,6 +4083,7 @@ public point object::rightPoint(point p1, point p2, float dis)
 	
 	// Calculate the length of the vector P1P2
 	float length = distance2d(p1, p2);
+	if (length < 0.001) return p2;
 	
 	// Calculate the normalized perpendicular vectors
 	float perp1x = (dy / length) * dis;
@@ -4688,7 +4691,7 @@ public bool object::checkLOS(point bot_position, point ant_position)
 {
 	SatCom com();
 	
-	if (!com.checkLOS || com.detectedWorm || category == PhazerShooter) return true;
+	if (!com.checkLOS || category == PhazerShooter) return true;
 	
 	float total = distance(bot_position, ant_position);
 	if (total < 3) return true;
@@ -6072,6 +6075,7 @@ public void object::escapeMountain(point botPoint, point target)
 			}
 			
 			dis = distance(this.position,target);
+			if (dis < 0.001) dis = 0.001;
 			dif = target.z-this.position.z;
 			ang = asin(dif/dis);
 			if (this.position.z < target.z + 15)
