@@ -1,5 +1,5 @@
 /*
-15 September 2026
+18 September 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -300,8 +300,9 @@ public class Queue
 			unlock();
 			return null;
 		}
+		object item = items[front];
 		unlock();
-		return items[front];
+		return item;
 	}
 }
 
@@ -1693,14 +1694,7 @@ public void object::crawl(point p)
 	dir = direction(p);
 	//motor(1 - dir/180,1 + dir/180);
 	motorPower(dir);
-	
 	cacheGrid();
-	
-	if (isStuck())
-	{
-		Message("Avoiding obstacle");
-		avoidStuck();
-	}
 }
 
 public void object::jetPower(object target)
@@ -1996,7 +1990,7 @@ public bool object::isStuck()
 	
 	if (this.pitch > 65) return true;
 	
-	if (this.velocity.x < 0.03 && this.velocity.y < 0.03)
+	if (abs(this.velocity.x) < 0.03 && abs(this.velocity.y) < 0.03)
 	{
 		o = radar(612,0,120,0,10); //Ruin; Space Ship Top
 		if (o != null)
@@ -2458,6 +2452,11 @@ public void object::waitForAvailable(int c)
 	if (c == NuclearCell)
 	{
 		o = radar(NuclearPlant);
+		if (o == null)
+		{
+			Message("No NuclearPlant to produce NuclearCell, can not wait for NuclearCell to be available");
+			return;
+		}
 		while (isbusy(o) || o.energyCell == null || o.energyCell.category != NuclearCell)
 		{
 			if (i == 0)
@@ -2471,6 +2470,11 @@ public void object::waitForAvailable(int c)
 	else if (c == PowerCell)
 	{
 		o = radar(PowerPlant);
+		if (o == null)
+		{
+			Message("No PowerPlant to produce PowerCell, can not wait for PowerCell to be available");
+			return;
+		}
 		while (isbusy(o) || o.energyCell == null || o.energyCell.category != PowerCell)
 		{
 			if (i == 0)
@@ -2543,7 +2547,7 @@ public bool object::astronautOnShip()
 	me = radar(Me);
 	ship = radar(SpaceShip);
 	
-	if (distance2d(me.position,ship.position) > 7)
+	if (me != null && ship != null && distance2d(me.position,ship.position) > 7)
 	{
 		Message("Astronaut, return to SpaceShip for takeoff");
 		return false;
@@ -3538,7 +3542,7 @@ public point object::getSpaceOnShip()
 	for (i = 0; i < 8; i++)
 	{
 		item = search(obj, spaces[i]);
-		if (distance2d(item.position, spaces[i]) > 2.5)
+		if (item == null || distance2d(item.position, spaces[i]) > 2.5)
 		{
 			return spaces[i];
 		}
@@ -4891,13 +4895,13 @@ public point object::searchSafeLZ(point botPos)
 			}
 			else if (i < radius * 6)
 			{
-				dx = radius - (i - radius * 4) - 1;
+				dx = radius - (i - radius * 4);
 				dy = radius;
 			}
 			else
 			{
 				dx = -radius;
-				dy = radius - (i - radius * 6) - 1;
+				dy = radius - (i - radius * 6);
 			}
 			
 			int gridX = botX + dx;
@@ -5118,6 +5122,9 @@ public point object::getRestPoint(object center, float radius)
 	{
 		flatSpaces = flatSpacesAroundCenter(center.position,1,radius,36);
 	}
+	
+	bestPoint = this.position;
+	bestPoint.z = topo(bestPoint);
 	
 	minDis = 999999;
 	for (int i = 0; i < sizeof(flatSpaces); i++)
@@ -5367,6 +5374,7 @@ public void object::airAttack(object o,float radius)
 		if (target.category == AlienWorm && topo(target.position) < 0)
 		{
 			Message("Target is underwater, wait for next target");
+			wait(0.01);
 			continue;
 		}
 		
@@ -5872,7 +5880,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 		// - Already closed
 		// - Or fCost does not match the popped cost (outdated duplicate)
 		if (state[bestIdx] == 2) continue;
-		if (fCost[bestIdx] != minCost) continue;
+		if (minCost > fCost[bestIdx]) continue;
 		
 		// Mark as CLOSED (expanded)
 		state[bestIdx] = 2;
