@@ -1,5 +1,5 @@
 /*
-18 September 2026
+20 September 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -4428,9 +4428,10 @@ public void object::aimAndFire(object target)
 	float g = 50; // gravitation (m / s^2)
 	float bc = v0 * v0 / g; // ballistic constant (max range at equal height)
 	
+	float maxAzimuth = 3; // 2
 	// Wasp specific parameters
 	float burstInterval = 0.05;
-	int burstCount = 3;
+	int burstCount = 5; // 3
 	
 	// Variables to track target (cylindrical coordinates)
 	float bearing, range, height, time;
@@ -4604,13 +4605,13 @@ public void object::aimAndFire(object target)
 		// Fired with advanced aim if target is within weapon envelope
 		if
 		(
-		(abs(a) <= maxAngle && abs(azimuth) <= 2)
+		(abs(a) <= maxAngle && abs(azimuth) <= maxAzimuth)
 		|| (this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20 && height < 0 && this.pitch < 0)
 		|| (this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20 && height >= 0 && this.pitch >= 0)
 		|| ((this.category == WingedShooter || this.category == WingedOrgaShooter) && range <= 20 && abs(height) <= 7)
 		)
 		{
-			// 3-round burst
+			// 5-round burst
 			for (int i = 0; i < burstCount; i++)
 			{
 				if (target == null || target.dead) break;
