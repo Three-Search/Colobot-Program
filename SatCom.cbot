@@ -1,5 +1,5 @@
 /*
-20 September 2026
+22 September 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -366,10 +366,13 @@ public class SatCom
 	static float shieldThreshold = 0.7;
 	static float attackRange = 42;
 	static float phazerAttackRange = 60;
+	static float minPhazerAimAngle = -20;
+	static float maxPhazerAimAngle = 45;
 	static bool checkLOS = true;
 	static bool plantFlag = false;
 	static float minAimAngle = -20;
 	static float maxAimAngle = 20;
+	static float maxAzimuth = 3; //2
 	
 	static float sqrt3 = 1.73205;
 	static float sqrt2 = 1.41421;
@@ -4232,8 +4235,8 @@ public void object::PhazerAim(object target)
 	float scanRange = com.safeQueen; // scan for targets within this radius
 	
 	// Platform specific parameters
-	float minAngle = -20; // minimum gun elevation relative to platform
-	float maxAngle = 45; // maximum gun elevation relative to platform
+	float minAngle = com.minPhazerAimAngle; // minimum gun elevation relative to platform
+	float maxAngle = com.maxPhazerAimAngle; // maximum gun elevation relative to platform
 	float weaponHeight = 2; // height of weapon above platform
 	float weaponOffset = 2; // weapon is this amount in front of platform
 	float maxTurnRate = 54; // maximum turn rate
@@ -4388,7 +4391,8 @@ public void object::PhazerAim(object target)
 		motor(-motorOutput, motorOutput); // apply turn rate
 		
 		// Fire if target is within weapon envelope
-		if (D >= 0 && a > minAngle - 2 && a < maxAngle + 2 && azimuth > -2 && azimuth < 2 && fireTime < abstime())
+		//if (D >= 0 && a > minAngle - 2 && a < maxAngle + 2 && azimuth > -2 && azimuth < 2 && fireTime < abstime())
+		if (D >= 0 && abs(a) <= maxAngle && abs(azimuth) < com.maxAzimuth && fireTime < abstime())
 		{
 			if (target != null && !target.dead)
 			{
@@ -4417,8 +4421,8 @@ public void object::aimAndFire(object target)
 	float scanRange = com.safeAnt; // scan for targets within this radius
 	
 	// Platform specific parameters
-	float minAngle = -20; // minimum gun elevation relative to platform, bot can elevate gun from -20 to 20
-	float maxAngle = 20; // maximum gun elevation relative to platform
+	float minAngle = com.minAimAngle; // minimum gun elevation relative to platform, bot can elevate gun from -20 to 20
+	float maxAngle = com.maxAimAngle; // maximum gun elevation relative to platform
 	float weaponHeight = (this.category == LeggedOrgaShooter || this.category == WingedOrgaShooter ? 2.0 : 1.5); // height of weapon above platform
 	float weaponOffset = (this.category == LeggedOrgaShooter || this.category == WingedOrgaShooter ? 2.0 : 1.5); // weapon is this amount in front of platform
 	float maxTurnRate = 54; // maximum turn rate
@@ -4428,7 +4432,6 @@ public void object::aimAndFire(object target)
 	float g = 50; // gravitation (m / s^2)
 	float bc = v0 * v0 / g; // ballistic constant (max range at equal height)
 	
-	float maxAzimuth = 3; // 2
 	// Wasp specific parameters
 	float burstInterval = 0.05;
 	int burstCount = 5; // 3
@@ -4605,7 +4608,7 @@ public void object::aimAndFire(object target)
 		// Fired with advanced aim if target is within weapon envelope
 		if
 		(
-		(abs(a) <= maxAngle && abs(azimuth) <= maxAzimuth)
+		(abs(a) <= maxAngle && abs(azimuth) <= com.maxAzimuth)
 		|| (this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20 && height < 0 && this.pitch < 0)
 		|| (this.category != WingedShooter && this.category != WingedOrgaShooter && range <= 20 && height >= 0 && this.pitch >= 0)
 		|| ((this.category == WingedShooter || this.category == WingedOrgaShooter) && range <= 20 && abs(height) <= 7)
@@ -4623,13 +4626,30 @@ public void object::aimAndFire(object target)
 		}
 		else if (this.category != WingedShooter && this.category != WingedOrgaShooter)
 		{
-			float target_angle = atan2(target.position.z - this.position.z, distance2d(this.position, target.position));
-			if (this.pitch < 0 && target_angle < 0 && this.pitch + 20 >= target_angle)
+			height = target.position.z - this.position.z;
+			range = distance2d(this.position, target.position);
+			a = atan2(height,range);
+			if (this.pitch < 0 && a < 0) // bot nose is pointed down and target is  below bot
 			{
-				if (fireAt(target.position))
+				if (abs(this.pitch - a) > com.maxAimAngle) // not within aim amgle that can shoot
 				{
-					fireTime = abstime() + it + 0.1; // wait until round hit (or not)
+					Message("Aim angle is not within weapon envelope, crawl towards target");
+					while (abs(this.pitch - a) > com.maxAimAngle)
+					{
+						crawl(target.position);
+						Wait(1);
+						if (target == null || target.dead) break;
+						height = target.position.z - this.position.z;
+						range = distance2d(this.position, target.position);
+						a = atan2(height,range);
+					}
+					if (target == null || target.dead) continue;
 				}
+				
+				//if (fireAt(target.position))
+				//{
+				//	fireTime = abstime() + it + 0.1; // wait until round hit (or not)
+				//}
 			}
 		}
 	}
@@ -5674,13 +5694,15 @@ public void object::landAttack()
 				{
 					Message("Target is below bot, crawl towards target");
 					dis = distance2d(this.position,target.position);
-					while (dis > com.attackRange || !checkLOS(target.position))
+					//while (dis > com.attackRange || !checkLOS(target.position) )
+					while (!checkLOS(target.position) || abs(this.pitch - atan2(target.position.z - this.position.z,dis)) > com.maxAimAngle)
 					{
 						crawl(target.position);
-						Wait(1);
-						if (target == null) break;
+						Wait(1); // in Wait has fireAt target
+						if (target == null || target.dead) break;
 						dis = distance2d(this.position,target.position);
 					}
+					if (target == null || target.dead) continue;
 				}
 			}
 			motor(0,0);
