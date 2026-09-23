@@ -1,5 +1,5 @@
 /*
-22 September 2026
+24 September 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -1674,31 +1674,44 @@ public void object::crawl2p(point p)
 	}
 }
 
-public void object::crawl(point p)
+public void object::avoidWater()
 {
-	float dir;
+	// Right-side sweep, cached, up to 5 samples
 	point sensor;
-	object o;
+	int idx;
+	int lastIdx = -1;
 	
-	for (int i = 30; i > 0; i--)
+	// Scan right side at 30, 20, 10, 5 m — decreasing distance
+	float dists[4] = {30, 20, 10, 5};
+	float angs[4]  = {-30, -40, -50, -55};
+	
+	for (int i = 0; i < 4; i++)
 	{
-		sensor = aheadPoint(i,i-60);
-		if (topo(sensor) < 0)
+		sensor = aheadPoint(dists[i], angs[i]);
+		idx = getNodeIndex(sensor);
+		if (idx == lastIdx) continue;
+		lastIdx = idx;
+		
+		if (getNodeZ(idx) < 0)
 		{
 			motor(-1,-1);
-			wait(0.2);
-			dir = 60-i;
-			//motor(1 - dir/180,1 + dir/180);
-			motorPower(dir);
-			wait(0.2);
+			wait(0.1);
+			motorPower(60 - dists[i]);  // 30->30, 20->40, 10->50, 5->55
+			wait(0.1);
 			return;
 		}
 	}
+}
+
+public void object::crawl(point p)
+{
+	SatCom com();
 	
-	dir = direction(p);
-	//motor(1 - dir/180,1 + dir/180);
-	motorPower(dir);
+	motorPower(direction(p));
 	cacheGrid();
+	
+	if (this.pitch > 68 || radar(com.ALL_SHOOTERS,0,60,0,5) != null) avoidStuck();
+	if (com.waterNodes > 0) avoidWater();
 }
 
 public void object::jetPower(object target)
@@ -2280,11 +2293,15 @@ public void object::avoidStuck()
 
 public void object::avoidStuck(float dir)
 {
-	motor(-1,-1);
-	Wait(1);
+	int sec = 1;
+	
+	if (this.pitch < 5) sec = 2;
 	
 	motor(-1,-1);
-	Wait(1);
+	Wait(sec);
+	
+	motor(-1,-1);
+	Wait(sec);
 	
 	turn(dir);
 	
@@ -4466,30 +4483,14 @@ public void object::aimAndFire(object target)
 	
 	while (true)
 	{
-		if (this.temperature > com.temperatureThreshold)
-		{
-			break;
-		}
-		
-		if (this.shieldLevel < com.shieldThreshold)
-		{
-			if (found(RepairCenter))
-			{
-				break;
-			}
-		}
+		if (this.temperature > com.temperatureThreshold) break;
+		if (this.shieldLevel < com.shieldThreshold && found(RepairCenter)) break;
 		
 		// Check for nearer enemies
 		current = radar(com.ants,0,360,0,scanRange);
-		if (target == null || current == null)
-		{
-			break;
-		}
+		if (target == null || current == null) break;
 		
-		if (target.category != AlienWasp && elapsedTime < abstime())
-		{
-			break;
-		}
+		if (target.category != AlienWasp && elapsedTime < abstime()) break;
 		
 		// check if any other enemy came closer than target
 		if (current != target)
@@ -4637,13 +4638,14 @@ public void object::aimAndFire(object target)
 					while (abs(this.pitch - a) > com.maxAimAngle)
 					{
 						crawl(target.position);
-						Wait(1);
+						wait(0.05);
+						fireAt(target.position);
+						if (this.shieldLevel < com.shieldThreshold && found(RepairCenter)) break;
 						if (target == null || target.dead) break;
 						height = target.position.z - this.position.z;
 						range = distance2d(this.position, target.position);
 						a = atan2(height,range);
 					}
-					if (target == null || target.dead) continue;
 				}
 				
 				//if (fireAt(target.position))
@@ -4845,6 +4847,8 @@ public void object::gotoSafeLZ()
 
 public bool object::isFlat(point p, float radius)
 {
+	//return (flatground(p,1) > 0);
+	
 	SatCom com();
 	
 	// Check 4 neighbor points: up, right, down, left
@@ -5625,7 +5629,7 @@ public void object::landAttack()
 		// check if stuck
 		if (distance(this.position,last) <= 0.05)
 		{
-			if (i > 10 || this.pitch > 60)
+			if (i > 10 || this.pitch > 65)
 			{
 				if (distance(this.position,target.position) > com.safeAnt || target.position.z - this.position.z > 10)
 				{
