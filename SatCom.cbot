@@ -2902,7 +2902,8 @@ public void object::repair()
 	}
 	else
 	{
-		if (search(com.ants,p,0,com.safeAnt) == null) go(p);
+		p = randomFreePoint(repairCenter.position,10,30); 
+		go(p);
 	}
 	com.returnMessage = category+": Repaired";
 	com.returnCode = 0;
@@ -3075,6 +3076,7 @@ public void object::chargeCell()
 	}
 	else
 	{
+		p = randomFreePoint(powerStation.position,10,30); 
 		go(p);
 	}
 	com.returnMessage = category+": Charged PowerCell";
