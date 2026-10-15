@@ -1,5 +1,5 @@
 /*
-24 September 2026
+15 October 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -77,7 +77,7 @@ extern void object::houston()
 public class MinHeap
 {
 	int nodes[];
-	float costs[];
+	int costs[];
 	int size;
 	
 	void MinHeap()
@@ -90,12 +90,12 @@ public class MinHeap
 		size = 0;
 	}
 	
-	void push(int node, float cost)
+	void push(int node, int cost)
 	{
 		int i = size;
 		int parent;
 		int parentNode;
-		float parentCost;
+		int parentCost;
 		
 		size++;
 		
@@ -119,7 +119,7 @@ public class MinHeap
 		costs[i] = cost;
 	}
 	
-	float peekCost()
+	int peekCost()
 	{
 		if (size == 0) return 999999;
 		return costs[0];
@@ -133,7 +133,7 @@ public class MinHeap
 		int right;
 		int smallest;
 		int lastNode;
-		float lastCost;
+		int lastCost;
 		
 		if (size == 0)
 		{
@@ -399,19 +399,29 @@ public class SatCom
 	static float[] floats;
 	static int[] ints;
 	
-	static int gridSize = 81;
-	static int totalNodes = 6561; // 81 * 81
-	static float nodeSpacing = 10;
-	static int centerX = 40;
-	static int centerY = 40;
+	//static int gridSize = 51;
+	//static int totalNodes = 2601; // 51 * 51
+	//static int spiralSlots = 4447; // 1 + 3*38*39: ring 38 reaches the farthest corner
+	//static float nodeSpacing = 16;
+	//static int centerX = 25;
+	//static int centerY = 25;
+	
+	static int gridSize = 79;
+	static int totalNodes = 6241; // 79 * 79
+	static int spiralSlots = 10621; // 1 + 3*59*60: ring 59 reaches the farthest corner
+	static float nodeSpacing = 10.3;
+	static float max1Climb = 5.2; // 0.5*nodeSpacing; // 26 degrees
+	static float max2Climb = 9; // 0.875*nodeSpacing; // 24 degrees
+	static int centerX = 39;
+	static int centerY = 39;
 	
 	// === SINGLE CACHE ARRAY (GENIUS!) ===
 	// 999 = Not initialized
-	static float gridZ[6561];  // Store actual heights
+	static float gridZ[6241];  // Store actual heights
 	static int cachedNodes;
 	static int waterNodes;
 	static int spiralCount;
-	static int landingNode[6561]; // -1 = not yet compute, 0 = node is water node  or not flat for landing, 1 = node itself is flat for landing, 2-5 = midpoint d (0-3) is flat for landing
+	static int landingNode[6241]; // -1 = not yet compute, 0 = node is water node  or not flat for landing, 1 = node itself is flat for landing, 2-5 = midpoint d (0-3) is flat for landing
 	
 	static string debugBuffer[100];
 	static int debugIndex = 0;
@@ -576,7 +586,8 @@ public class SatCom
 			TrackedOrgaShooter,
 			WingedOrgaShooter,
 			LeggedOrgaShooter,
-			PhazerShooter
+			PhazerShooter,
+			60
 		};
 		ALL_SHOOTERS = a1;
 		
@@ -1054,16 +1065,17 @@ public class SatCom
 public float getNodeX(int idx)
 {
 	SatCom com();
-	int x = idx % com.gridSize;
-	return (x - com.centerX) * com.nodeSpacing;
+	int col = idx % com.gridSize;
+	int row = idx / com.gridSize;
+	return (col - com.centerX + 0.5 * (1 - (row % 2))) * com.nodeSpacing;
 }
 
 // Helper: get world Y from index
 public float getNodeY(int idx)
 {
 	SatCom com();
-	int y = idx / com.gridSize;
-	return (y - com.centerY) * com.nodeSpacing;
+	int row = idx / com.gridSize;
+	return (row - com.centerY) * com.nodeSpacing;
 }
 
 // Helper: get world Z from index
@@ -1086,12 +1098,12 @@ public void cacheGrid()
 {
 	SatCom com();
 	
-	if (com.spiralCount >= com.totalNodes) return;
+	if (com.spiralCount >= com.spiralSlots || com.cachedNodes >= com.totalNodes) return;
 	
 	// Get next node in the spiral
 	int idx = getSpiralNode(com.spiralCount);
-	if (idx == -1) return;
 	com.spiralCount++;
+	if (idx == -1) return;
 	float z = cacheGrid(idx);
 }
 
@@ -1186,72 +1198,101 @@ public point getNodePoint(int idx)
 public int getNodeIndex(point p)
 {
 	SatCom com();
-	int x = round(p.x / com.nodeSpacing) + com.centerX;
-	int y = round(p.y / com.nodeSpacing) + com.centerY;
-	if (x < 0) x = 0;
-	if (x >= com.gridSize) x = com.gridSize - 1;
-	if (y < 0) y = 0;
-	if (y >= com.gridSize) y = com.gridSize - 1;
-	return y * com.gridSize + x;
+	
+	// World --> fractional axial
+	//   worldX = D * (Q - Qc) + D/2 * (R - Rc)
+	//   worldY = r * (R - Rc)
+	int centerRowOdd = com.centerY % 2;
+	int Qc = com.centerX - (com.centerY + centerRowOdd) / 2;
+	int Rc = com.centerY;
+	
+	float Rf = p.y / com.nodeSpacing + Rc;
+	float Qf = p.x / com.nodeSpacing - p.y / (2 * com.nodeSpacing) + Qc;
+	float Sf = -Qf - Rf;
+	
+	// Cube rounding
+	int rQ = round(Qf);
+	int rR = round(Rf);
+	int rS = round(Sf);
+	
+	float dQ = abs(rQ - Qf);
+	float dR = abs(rR - Rf);
+	float dS = abs(rS - Sf);
+	
+	if (dQ > dR && dQ > dS)      rQ = -rR - rS;
+	else if (dR > dS)            rR = -rQ - rS;
+	else                         rS = -rQ - rR;
+	
+	int Q = rQ;
+	int R = rR;
+	
+	// Axial --> even-r offset
+	int row = R;
+	int rowOdd = row % 2;
+	if (rowOdd < 0) rowOdd += 2;
+	int col = Q + (row + rowOdd) / 2;
+	
+	if (col < 0) col = 0;
+	if (col >= com.gridSize) col = com.gridSize - 1;
+	if (row < 0) row = 0;
+	if (row >= com.gridSize) row = com.gridSize - 1;
+	return row * com.gridSize + col;
 }
 
 // Helper: get neighbor index by direction
 // idx = current node index
-// d = direction (0-7)
+// d = direction (0-5)
 // Returns neighbor index, or -1 if out of bounds
 public int getNeighborIndex(int idx, int d)
 {
 	SatCom com();
 	
 	// Get current grid coordinates
-	int x = idx % com.gridSize;
-	int y = idx / com.gridSize;
+	int col = idx % com.gridSize;
+	int row = idx / com.gridSize;
 	
-	// Direction offsets
-	int dx, dy;
+	int rowOdd = row % 2;
+	if (rowOdd < 0) rowOdd += 2;
+	
+	// Direction offsets (even-r offset, pointy-top)
+	int dcol, drow;
 	
 	switch (d)
 	{
-		case 0:  // Up
-			dx = 0; dy = -1;
+		case 0:  // E
+			dcol =  1;           drow =  0;
 			break;
-		case 1:  // Up-Right
-			dx = 1; dy = -1;
+		case 1:  // NE
+			dcol =  1 - rowOdd;  drow = -1;
 			break;
-		case 2:  // Right
-			dx = 1; dy = 0;
+		case 2:  // NW
+			dcol = -rowOdd;      drow = -1;
 			break;
-		case 3:  // Down-Right
-			dx = 1; dy = 1;
+		case 3:  // W
+			dcol = -1;           drow =  0;
 			break;
-		case 4:  // Down
-			dx = 0; dy = 1;
+		case 4:  // SW
+			dcol = -rowOdd;      drow =  1;
 			break;
-		case 5:  // Down-Left
-			dx = -1; dy = 1;
-			break;
-		case 6:  // Left
-			dx = -1; dy = 0;
-			break;
-		case 7:  // Up-Left
-			dx = -1; dy = -1;
+		case 5:  // SE
+			dcol =  1 - rowOdd;  drow =  1;
 			break;
 		default:
 			return -1;  // Invalid direction,
 	}
 	
 	// Calculate neighbor coordinates
-	int nx = x + dx;
-	int ny = y + dy;
+	int ncol = col + dcol;
+	int nrow = row + drow;
 	
 	// Check bounds
-	if (nx < 0 || nx >= com.gridSize || ny < 0 || ny >= com.gridSize)
+	if (ncol < 0 || ncol >= com.gridSize || nrow < 0 || nrow >= com.gridSize)
 	{
 		return -1;  // Out of bounds,
 	}
 	
 	// Return neighbor index
-	return ny * com.gridSize + nx;
+	return nrow * com.gridSize + ncol;
 }
 
 public void object::missionComplete()
@@ -1710,7 +1751,7 @@ public void object::crawl(point p)
 	motorPower(direction(p));
 	cacheGrid();
 	
-	if (this.pitch > 68 || radar(com.ALL_SHOOTERS,0,60,0,5) != null) avoidStuck();
+	if (this.pitch > 68 || radar(com.ALL_SHOOTERS,0,60,2,10) != null) avoidStuck();
 	if (com.waterNodes > 0) avoidWater();
 }
 
@@ -1937,60 +1978,64 @@ public void object::motorPower(float dir)
 public int getSpiralNode(int n)
 {
 	SatCom com();
-	int gridSize = com.gridSize;
-	int cx = 40;
-	int cy = 40;
 	
 	// n = 0 center
 	if (n == 0)
 	{
-		return cy * gridSize + cx;
+		return com.centerY * com.gridSize + com.centerX;
 	}
+	if (n < 0) return -1;
 	
-	// Find ring
-	float sqrt_n = sqrt(n);
-	int ring = (sqrt_n - 1) / 2 + 1;
+	// Find ring: total nodes up to ring k-1 is 1 + 3*(k-1)*k
+	// Ring k has 6*k nodes
+	float sqrt_n = sqrt(12.0 * n - 3.0);
+	int ring = floor((3.0 + sqrt_n) / 6.0);
+	
+	// If ring exceeds max useful radius, spiral is done
+	if (ring > com.gridSize) return -1;
 	
 	// Nodes before this ring
-	int nodesBefore = 1 + 4 * (ring - 1) * ring;
-	int pos = n - nodesBefore;  // 0 to 8*ring - 1
+	int nodesBefore = 1 + 3 * (ring - 1) * ring;
+	int pos = n - nodesBefore;   // 0 to 6*ring - 1
+	int side = pos / ring;       // 0 to 5
+	int offset = pos % ring;     // 0 to ring - 1
 	
-	int x, y;
+	// Ring walk directions (from E corner, counterclockwise): NW, W, SW, SE, E, NE
+	int dQ[6] = { 0, -1, -1, 0, 1,  1};
+	int dR[6] = {-1,  0,  1, 1, 0, -1};
 	
-	// Walk clockwise around the ring
-	// Each ring has 8*ring nodes
-	if (pos < 2 * ring)
+	// Center axial coordinates
+	int centerRowOdd = com.centerY % 2;
+	int Qc = com.centerX - (com.centerY + centerRowOdd) / 2;
+	int Rc = com.centerY;
+	
+	// Start at E corner of ring
+	int Q = Qc + ring;
+	int R = Rc;
+	
+	// Walk "side" full sides of length "ring"
+	for (int s = 0; s < side; s++)
 	{
-		// Top side: left to right (including corners)
-		x = cx - ring + pos;
-		y = cy - ring;
+		Q += dQ[s] * ring;
+		R += dR[s] * ring;
 	}
-	else if (pos < 4 * ring)
+	// Then walk offset steps into the current side
+	Q += dQ[side] * offset;
+	R += dR[side] * offset;
+	
+	// Axial --> even-r offset
+	int row = R;
+	int rowOdd = row % 2;
+	if (rowOdd < 0) rowOdd += 2;
+	int col = Q + (row + rowOdd) / 2;
+	
+	// Bounds check
+	if (col < 0 || col >= com.gridSize || row < 0 || row >= com.gridSize)
 	{
-		// Right side: top to bottom (excluding top corner)
-		x = cx + ring;
-		y = cy - ring + (pos - 2 * ring);
-	}
-	else if (pos < 6 * ring)
-	{
-		// Bottom side: right to left (excluding right corner)
-		x = cx + ring - (pos - 4 * ring);
-		y = cy + ring;
-	}
-	else
-	{
-		// Left side: bottom to top (excluding bottom corner)
-		x = cx - ring;
-		y = cy + ring - (pos - 6 * ring);
+		return -1;  // out of rhombus, skip this ring slot
 	}
 	
-	// Check bounds
-	if (x < 0 || x >= gridSize || y < 0 || y >= gridSize)
-	{
-		return -1;
-	}
-	
-	return y * gridSize + x;
+	return row * com.gridSize + col;
 }
 
 public bool object::isStuck()
@@ -2244,10 +2289,10 @@ public void object::avoidStuck()
 {
 	SatCom com();
 	
-	point ahead = aheadPoint(5);
-	point left = leftPoint(this.position, ahead, 10);
+	point ahead = aheadPoint(10);
+	point left = leftPoint(this.position, ahead, 20);
 	left.z = topo(left);
-	point right = rightPoint(this.position, ahead, 10);
+	point right = rightPoint(this.position, ahead, 20);
 	right.z = topo(right);
 	int sign = (left.z < right.z ? 1 : -1);
 	
@@ -2256,13 +2301,13 @@ public void object::avoidStuck()
 		object r = radar(612,0,120,0,10); //Ruin; Space Ship Top
 		if (r != null)
 		{
-			sign =(distance2d(left, r.position) > distance2d(right, r.position) ? 1 : -1);
+			sign =(distance2d(left, r.position) > distance2d(right, r.position) ? 1 : -1); // choose farer to obstacle
 		}
 		
 		r = radar(611,0,120,0,10); //Ruin; Space Ship Bace
 		if (r != null)
 		{
-			sign =(distance2d(left, r.position) > distance2d(right, r.position) ? 1 : -1);
+			sign =(distance2d(left, r.position) > distance2d(right, r.position) ? 1 : -1); // choose farer to obstacle
 		}
 	}
 	
@@ -2271,7 +2316,7 @@ public void object::avoidStuck()
 		object q = radar(com.quartz,0,180,0,5);
 		if (q != null)
 		{
-			sign =(distance2d(left, q.position) > distance2d(right, q.position) ? 1 : -1);
+			sign =(distance2d(left, q.position) > distance2d(right, q.position) ? 1 : -1); // choose farer to obstacle
 		}
 	}
 	else
@@ -2279,7 +2324,15 @@ public void object::avoidStuck()
 		object a = radar(Any,0,180,0,5);
 		if (a != null)
 		{
-			sign =(distance2d(left, a.position) > distance2d(right, a.position) ? 1 : -1);
+			sign =(distance2d(left, a.position) > distance2d(right, a.position) ? 1 : -1); // choose farer to obstacle
+		}
+		else
+		{
+			a = radar(com.ants);
+			if (a != null)
+			{
+				sign =(distance2d(left, a.position) < distance2d(right, a.position) ? 1 : -1); // choose nearer to enemy
+			}
 		}
 	}
 	
@@ -2586,6 +2639,7 @@ public void object::switchCell()
 	drop(EnergyCell);
 }
 
+// c is PowerPlant or NuclearPlant where the bot will get the new powercell or nuclearcell
 public void object::switchCell(int c)
 {
 	SatCom com();
@@ -2846,6 +2900,10 @@ public void object::repair()
 	{
 		go(p);
 	}
+	else
+	{
+		if (search(com.ants,p,0,com.safeAnt) == null) go(p);
+	}
 	com.returnMessage = category+": Repaired";
 	com.returnCode = 0;
 }
@@ -3012,6 +3070,10 @@ public void object::chargeCell()
 	
 	com.chargeQueue.dequeue(this);
 	if (isShooter(category) && !found(com.ants))
+	{
+		go(p);
+	}
+	else
 	{
 		go(p);
 	}
@@ -4900,52 +4962,50 @@ public point object::searchSafeLZ(point botPos)
 	SatCom com();
 	
 	int botIdx = getNodeIndex(botPos);
-	int botX = botIdx % com.gridSize;
-	int botY = botIdx / com.gridSize;
+	int botCol = botIdx % com.gridSize;
+	int botRow = botIdx / com.gridSize;
 	
-	for (int radius = 1; radius <= 15; radius++)
+	// Convert to axial (even-r)
+	int botRowOdd = botRow % 2;
+	if (botRowOdd < 0) botRowOdd += 2;
+	int botQ = botCol - (botRow + botRowOdd) / 2;
+	int botR = botRow;
+	
+	// Ring walk directions from E corner (counterclockwise): NW, W, SW, SE, E, NE
+	int dQ[6] = { 0, -1, -1, 0, 1,  1};
+	int dR[6] = {-1,  0,  1, 1, 0, -1};
+	
+	for (int radius = 1; radius <= 8; radius++)
 	{
-		int nodesOnSquare = radius * 8;
+		// Start at E corner of the hex ring
+		int Q = botQ + radius;
+		int R = botR;
 		
-		for (int i = 0; i < nodesOnSquare; i++)
+		for (int side = 0; side < 6; side++)
 		{
-			int dx, dy;
-			
-			if (i < radius * 2)
+			for (int step = 0; step < radius; step++)
 			{
-				dx = -radius + i;
-				dy = -radius;
-			}
-			else if (i < radius * 4)
-			{
-				dx = radius;
-				dy = -radius + (i - radius * 2);
-			}
-			else if (i < radius * 6)
-			{
-				dx = radius - (i - radius * 4);
-				dy = radius;
-			}
-			else
-			{
-				dx = -radius;
-				dy = radius - (i - radius * 6);
-			}
-			
-			int gridX = botX + dx;
-			int gridY = botY + dy;
-			
-			if (gridX < 0 || gridX >= com.gridSize || gridY < 0 || gridY >= com.gridSize) continue;
-			
-			int idx = gridY * com.gridSize + gridX;
-			
-			float z = cacheGrid(idx);
-			if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && z > botPos.z + 3) continue;
-			if (com.landingNode[idx] > 0)
-			{
-				point p = getLandingPoint(idx);
-				if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && p.z > botPos.z + 3) continue;
-				if (isSafeLandingPoint(p)) return p;
+				// Axial --> even-r offset
+				int row = R;
+				int rowOdd = row % 2;
+				if (rowOdd < 0) rowOdd += 2;
+				int col = Q + (row + rowOdd) / 2;
+				
+				Q += dQ[side];
+				R += dR[side];
+				
+				if (col >= 0 && col < com.gridSize && row >= 0 && row < com.gridSize)
+				{
+					int idx = row * com.gridSize + col;
+					float z = cacheGrid(idx);
+					if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && z > botPos.z + 3) continue;
+					if (com.landingNode[idx] > 0)
+					{
+						point p = getLandingPoint(idx);
+						if ((this.category == WingedShooter || this.category == WingedOrgaShooter) && p.z > botPos.z + 3) continue;
+						if (isSafeLandingPoint(p)) return p;
+					}
+				}
 			}
 		}
 	}
@@ -5489,8 +5549,9 @@ public void object::airGuard(object center, float radius)
 		return;
 	}
 	
-	start = getRestPoint(center,radius/2);
-	detectRange = 10000;
+	//start = getRestPoint(center,radius/2);
+	start = this.position;
+	detectRange = radius + com.attackRange;
 	
 	while (true)
 	{
@@ -5510,79 +5571,46 @@ public void object::airGuard(object center, float radius)
 			}
 		}
 		
-		enemy = search(com.ants,center.position,0,detectRange);
-		if (enemy == null && com.detectedWasp)
+		enemy = search(com.ants,center.position);
+		if (enemy == null)
 		{
-			enemy = search(AlienWasp,center.position,0,detectRange);
+			wait(0.1);
+			continue;
 		}
-		else if (enemy == null && com.detectedWorm)
+		else
 		{
-			enemy = Radar(AlienWorm);
-		}
-		
-		if (enemy != null)
-		{
-			if (enemy.category == AlienWorm && topo(enemy.position) < 0)
+			if (topo(enemy.position) < 0 || distance2d(this.position,center.position) > radius)
 			{
-				Message("Target is underwater, wait for next target");
+				p = mid(enemy.position,center.position,radius/2);
+				p.z = topo(p);
+				//p = space(p,8,12,4);
+				//p = start;
+				if (distance2d(this.position,p) > 2) landAndRest(p);
+				wait(0.1);
 				continue;
 			}
-			
-			if (com.detectedGraviPlant)
+		}
+		
+		moveAndDestroy(enemy);
+		
+		if (found(PowerCaptor))
+		{
+			if (distance2d(this.position,center.position) > radius && distance2d(this.position,location(PowerCaptor)) > 40)
 			{
-				root = search(GraviPlant,enemy.position,0,com.attackRange);
-				if (root != null)
-				{
-					if (distance2d(this.position,root.position) > com.safeAnt && distance2d(this.position,root.position) < distance2d(this.position,enemy.position))
-					{
-						left = leftPoint(10);
-						right = rightPoint(10);
-						left.z = this.position.z;
-						right.z = this.position.z;
-						if (distance2d(left,enemy.position) < distance2d(right,enemy.position))
-						{
-							p = left;
-						}
-						else
-						{
-							p = right;
-						}
-						fly(p);
-						wait(1);
-						continue;
-					}
-				}
+				motor(0,0);
+				aimAndFire(enemy);
 			}
-			
-			moveAndDestroy(enemy);
-			
-			if (found(PowerCaptor))
+		}
+		else
+		{
+			if (distance2d(this.position,center.position) > radius)
 			{
-				if (distance2d(this.position,center.position) > radius && distance2d(this.position,location(PowerCaptor)) > 50)
+				if (center.category == SpaceShip)
 				{
 					motor(0,0);
 					aimAndFire(enemy);
 				}
 			}
-			else
-			{
-				if (distance2d(this.position,center.position) > radius)
-				{
-					if (center.category == SpaceShip)
-					{
-						motor(0,0);
-						aimAndFire(enemy);
-					}
-					else
-					{
-						fly(center.position);
-					}
-				}
-			}
-		}
-		else
-		{
-			break;
 		}
 	}
 	
@@ -5767,7 +5795,7 @@ public void object::baseGuard(object center, float radius)
 			}
 			continue;
 		}
-		if (disC2T > 200)
+		if (disC2T > com.safeAnt)
 		{
 			checkSelfStatus();
 		}
@@ -5808,6 +5836,38 @@ public void object::baseGuard(object center, float radius)
 	errmode(1);	
 }
 
+// Hex cube distance between two node indices (number of hex steps)
+public int hexDistance(int idx1, int idx2)
+{
+	SatCom com();
+	
+	int col1 = idx1 % com.gridSize;
+	int row1 = idx1 / com.gridSize;
+	int col2 = idx2 % com.gridSize;
+	int row2 = idx2 / com.gridSize;
+	
+	int r1Odd = row1 % 2; if (r1Odd < 0) r1Odd += 2;
+	int r2Odd = row2 % 2; if (r2Odd < 0) r2Odd += 2;
+	
+	int Q1 = col1 - (row1 + r1Odd) / 2;
+	int R1 = row1;
+	int Q2 = col2 - (row2 + r2Odd) / 2;
+	int R2 = row2;
+	
+	int dQ = Q1 - Q2;
+	int dR = R1 - R2;
+	int dS = -dQ - dR;
+	
+	int aQ = abs(dQ);
+	int aR = abs(dR);
+	int aS = abs(dS);
+	
+	int m = aQ;
+	if (aR > m) m = aR;
+	if (aS > m) m = aS;
+	return m;
+}
+
 public point[] object::searchEscapeMountainPath(point botPoint, point target)
 {
 	SatCom com();
@@ -5815,8 +5875,6 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	int totalNodes = com.totalNodes;
 	int startIndex = getNodeIndex(botPoint);
 	int targetIndex = getNodeIndex(target);
-	float moveCost[8] = {10, 14.14, 10, 14.14, 10, 14.14, 10, 14.14};
-	float moveCostSq[8] = {100, 199.9396, 100, 199.9396, 100, 199.9396, 100, 199.9396};
 	
 	point startPoint; startPoint.x = getNodeX(startIndex); startPoint.y = getNodeY(startIndex); startPoint.z = getNodeZ(startIndex);
 	plantFlag(startPoint, 50); // green cross
@@ -5838,10 +5896,11 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	
 	// ---------- A* DATA WITH SINGLE STATE ARRAY ----------
 	// state: 0 = UNVISITED (never seen), 1 = IN_OPEN (in priority queue), 2 = CLOSED (expanded)
+	// Hex grid has uniform step cost --> use integer step count.
 	int state[totalNodes];
 	int parent[totalNodes];
-	float gCost[totalNodes];
-	float fCost[totalNodes];
+	int gCost[totalNodes];
+	int fCost[totalNodes];
 	
 	// Use MinHeap for open list
 	MinHeap heap = new MinHeap();
@@ -5859,7 +5918,8 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	
 	parent[startIndex] = -1;
 	gCost[startIndex] = 0;
-	fCost[startIndex] = distance(startPoint, targetPoint);
+	int h = hexDistance(startIndex, targetIndex);
+	fCost[startIndex] = h * 128 + h;
 	
 	heap.push(startIndex, fCost[startIndex]);
 	state[startIndex] = 1;  // IN_OPEN
@@ -5870,9 +5930,9 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 	
 	int idx;
 	int current, next;
-	float parentZ, currentZ, nextZ;
+	float deltaZ, parentZ, currentZ, nextZ;
 	
-	float tentativeG;
+	int tentativeG;
 	
 	bool restOnSlope = ((this.category == WingedShooter || this.category == WingedOrgaShooter) ? true : false);
 	point behind,left,right;
@@ -5901,7 +5961,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 		if (heap.size > maxOpenCount) maxOpenCount = heap.size;
 		
 		// Get the smallest cost from the heap (peek) then pop
-		float minCost = heap.peekCost();
+		int minCost = heap.peekCost();
 		int bestIdx = heap.pop();
 		
 		if (bestIdx == -1) break;
@@ -5930,17 +5990,17 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 			parentZ = getNodeZ(parent[current]);
 		}
 		
-		// Expand 8 neighbors
-		for (int d = 0; d < 8; d++)
+		// Expand 6 hex neighbors (unit cost each)
+		for (int d = 0; d < 6; d++)
 		{
 			next = getNeighborIndex(current, d);
 			if (next == -1) continue;
 			nextZ = getNodeZ(next);
-			// --- UNIVERSAL CHECK: Blocks >45 degrees slopes ---
+			// --- UNIVERSAL CHECK: Blocks > 26 degrees slopes ---
 			// Both bots cannot climb steep walls, and fly bot stays in valleys
 			if (nextZ > maxOpenZ) continue; // if higher than startPoint or targetPoint, block this neighbor node
-			if (nextZ > 0 && currentZ > 0 && nextZ - currentZ > moveCost[d]*0.6) continue; // if angle from current to next is steeper than 31 degrees, block this neighbor node tan(31) = 0.6
-			if (parent[current] != -1 && nextZ > 0 && parentZ > 0 && nextZ - parentZ > 12) continue;  // if angle from parent to current to next is continously  steeper than 31 degrees , block this neighbor node
+			if (nextZ > 0 && currentZ > 0 && nextZ - currentZ > com.max1Climb) continue; // if angle from current to next is steeper than 26 degrees, block this neighbor node
+			if (parent[current] != -1 && nextZ > 0 && parentZ > 0 && nextZ - parentZ > com.max2Climb) continue;  // if angle from parent to current to next is continously  steeper than 24 degrees , block this neighbor node
 			
 			// NEW: init other arrays on first touch
 			if (state[next] == 0)
@@ -5952,18 +6012,15 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 			
 			// performance improve, used precompute moveCostSq[d] = moveCost[d]*moveCost[d] 
 			// tentativeG = gCost[current] + sqrt(moveCost[d]*moveCost[d] + (nextZ - currentZ)*(nextZ - currentZ));
-			tentativeG = gCost[current] + sqrt(moveCostSq[d] + (nextZ - currentZ)*(nextZ - currentZ));
+			// Unit cost A*: each hex step costs 1
+			tentativeG = gCost[current] + 1;
 			
 			if (tentativeG < gCost[next])
 			{
 				gCost[next] = tentativeG;
 				parent[next] = current;
-				// performance improve, reused nextZ instead of calling getNodePoint(next)
-				// nextPoint = getNodePoint(next);
-				nextPoint.x = getNodeX(next);
-				nextPoint.y = getNodeY(next);
-				nextPoint.z = nextZ;
-				fCost[next] = tentativeG + distance(nextPoint, targetPoint);
+				h = hexDistance(next, targetIndex);
+				fCost[next] = (tentativeG + h) * 128 + h;
 				
 				// If this node was CLOSED, RE-OPEN it!
 				if (state[next] == 2)
@@ -6114,7 +6171,7 @@ public void object::escapeMountain(point botPoint, point target)
 				jet(0);
 			}
 			motorPower(direction(p));
-			
+			cacheGrid();
 			avoidObstacle();
 			
 			enemy = radar(com.ants,0,360,0,com.attackRange);
