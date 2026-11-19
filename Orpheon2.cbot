@@ -182,5 +182,5 @@ extern void object::Orpheon2()
 public void object::Mission()
 {
 	checkEnergyCell();
-	airGuard(radar(SpaceShip),50);
+	airAttack(radar(SpaceShip),100);
 }
