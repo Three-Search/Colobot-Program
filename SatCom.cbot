@@ -1,5 +1,5 @@
 /*
-15 October 2026
+19 November 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -223,7 +223,8 @@ public class Queue
 		while (lockedBy != null)
 		{
 			// Wait until the lock is released
-			wait(1);
+			cacheGrid();
+			wait(0.5);
 		}
 		lockedBy = bot;
 	}
@@ -1219,9 +1220,9 @@ public int getNodeIndex(point p)
 	float dR = abs(rR - Rf);
 	float dS = abs(rS - Sf);
 	
-	if (dQ > dR && dQ > dS)      rQ = -rR - rS;
-	else if (dR > dS)            rR = -rQ - rS;
-	else                         rS = -rQ - rR;
+	if (dQ > dR && dQ > dS)	  rQ = -rR - rS;
+	else if (dR > dS)			rR = -rQ - rS;
+	else						 rS = -rQ - rR;
 	
 	int Q = rQ;
 	int R = rR;
@@ -1260,19 +1261,19 @@ public int getNeighborIndex(int idx, int d)
 	switch (d)
 	{
 		case 0:  // E
-			dcol =  1;           drow =  0;
+			dcol =  1;		   drow =  0;
 			break;
 		case 1:  // NE
 			dcol =  1 - rowOdd;  drow = -1;
 			break;
 		case 2:  // NW
-			dcol = -rowOdd;      drow = -1;
+			dcol = -rowOdd;	  drow = -1;
 			break;
 		case 3:  // W
-			dcol = -1;           drow =  0;
+			dcol = -1;		   drow =  0;
 			break;
 		case 4:  // SW
-			dcol = -rowOdd;      drow =  1;
+			dcol = -rowOdd;	  drow =  1;
 			break;
 		case 5:  // SE
 			dcol =  1 - rowOdd;  drow =  1;
@@ -1300,7 +1301,7 @@ public void object::missionComplete()
 	SatCom com();
 	
 	Message("Mission completed");
-	Debug("spiralCount " + com.spiralCount+", cachedNodes "+com.cachedNodes+", waterNodes "+com.waterNodes+", temperatetureThreshold " +com.temperatureThreshold);
+	Debug("spiralCount " + com.spiralCount+", cachedNodes "+com.cachedNodes+", waterNodes "+com.waterNodes+", temperatureThreshold " +com.temperatureThreshold);
 	PrintDebug();
 }
 
@@ -1512,7 +1513,7 @@ public float object::distance2Ant(point p)
 	}
 	
 	object o = search(AlienAnt,p);
-	if (o == null || o.dead)
+	if (o == null)
 	{
 		return 999;
 	}
@@ -1615,7 +1616,7 @@ public float object::distance2Ants(point p)
 	SatCom com();
 	
 	object o = search(com.ants,p);
-	if (o == null || o.dead)
+	if (o == null)
 	{
 		return 999;
 	}
@@ -1717,42 +1718,107 @@ public void object::crawl2p(point p)
 
 public void object::avoidWater()
 {
-	// Right-side sweep, cached, up to 5 samples
-	point sensor;
-	int idx;
-	int lastIdx = -1;
+	SatCom com();
 	
-	// Scan right side at 30, 20, 10, 5 m — decreasing distance
-	float dists[4] = {30, 20, 10, 5};
-	float angs[4]  = {-30, -40, -50, -55};
+	// ============================================================
+	// WATER BORDER FOLLOWER (right-hand rule)
+	// ------------------------------------------------------------
+	// Samples 3 concentric arcs of world points ahead of the bot.
+	// Each point -> hex index -> getNodeZ() classifies as water/land
+	// and warms the shared terrain cache as a side effect.
+	//
+	// Convention: keep water on the bot's RIGHT.
+	// motorPower(+x) turns left; motorPower(-x) turns right.
+	// ============================================================
 	
-	for (int i = 0; i < 4; i++)
+	// --- Arc layout: 3 rings x 3 angles = up to 9 samples ---
+	// (-45, 0, +45) forms a forward fan around the bot's heading.
+	float rings[3]  = { 8, 16, 24 };
+	float angles[3] = { 75, 0, -75 };
+	
+	bool front = false;
+	bool left  = false;
+	bool right = false;
+	
+	for (int r = 0; r < 3; r++)
 	{
-		sensor = aheadPoint(dists[i], angs[i]);
-		idx = getNodeIndex(sensor);
-		if (idx == lastIdx) continue;
-		lastIdx = idx;
+		float d = rings[r];
 		
-		if (getNodeZ(idx) < 0)
+		if (!left)
 		{
-			motor(-1,-1);
-			wait(0.1);
-			motorPower(60 - dists[i]);  // 30->30, 20->40, 10->50, 5->55
-			wait(0.1);
-			return;
+			int idx = getNodeIndex(aheadPoint(d, angles[0]));
+			if (getNodeZ(idx) < 0) left = true;
 		}
+		if (!front)
+		{
+			int idx = getNodeIndex(aheadPoint(d, angles[1]));
+			if (getNodeZ(idx) < 0) front = true;
+		}
+		if (!right)
+		{
+			int idx = getNodeIndex(aheadPoint(d, angles[2]));
+			if (getNodeZ(idx) < 0) right = true;
+		}
+		
+		// Early exit once every direction has a definitive answer.
+		if (left && front && right) break;
 	}
+	
+	// --- Decision: right-hand rule ---
+	
+	if (left && right)
+	{
+		// Water on both sides: narrow spit or small islet.
+		// Back up and turn around.
+		motor(-1, -1);
+		wait(0.3);
+		turn(-70);
+		motor(0.8, 0.8);
+		wait(0.1);
+		return;
+	}
+	
+	if (front)
+	{
+		// Water directly ahead: swing right hard to put it on our side.
+		motorPower(70);
+		wait(0.1);
+		return;
+	}
+	
+	if (left)
+	{
+		// Water on the left only: we drifted across the lake.
+		// Medium right turn to bring the lake back to our right.
+		motorPower(-70);
+		wait(0.1);
+		return;
+	}
+	
+	if (right)
+	{
+		// Perfect border position: water on right, everything else dry.
+		// Walk forward along the shore.
+		motor(0.8, 0.8);
+		wait(0.1);
+		return;
+	}
+	
+	// No water in the fan at all. Walk straight and let the fan
+	// re-acquire the shore on the next tick. (Do NOT turn — turning
+	// would make the bot circle endlessly on large lakes.)
+	motor(0.8, 0.8);
 }
 
 public void object::crawl(point p)
 {
 	SatCom com();
+		
+	if (this.pitch > 68 || radar(com.ALL_SHOOTERS,0,60,2,10) != null) avoidStuck();
+	if (com.waterNodes > 0) avoidWater();
 	
 	motorPower(direction(p));
 	cacheGrid();
-	
-	if (this.pitch > 68 || radar(com.ALL_SHOOTERS,0,60,2,10) != null) avoidStuck();
-	if (com.waterNodes > 0) avoidWater();
 }
 
 public void object::jetPower(object target)
@@ -1997,8 +2063,8 @@ public int getSpiralNode(int n)
 	// Nodes before this ring
 	int nodesBefore = 1 + 3 * (ring - 1) * ring;
 	int pos = n - nodesBefore;   // 0 to 6*ring - 1
-	int side = pos / ring;       // 0 to 5
-	int offset = pos % ring;     // 0 to ring - 1
+	int side = pos / ring;	   // 0 to 5
+	int offset = pos % ring;	 // 0 to ring - 1
 	
 	// Ring walk directions (from E corner, counterclockwise): NW, W, SW, SE, E, NE
 	int dQ[6] = { 0, -1, -1, 0, 1,  1};
@@ -2282,7 +2348,6 @@ public void object::flySideways(float dir)
 	move(-12);
 	turn(dir);
 	move(4);
-	errmode(1);
 }
 
 public void object::avoidStuck()
@@ -2372,12 +2437,16 @@ public void object::Wait(int sec)
 	{
 		wait(0.05);
 		checkEnemy();
+		cacheGrid();
 	}
 }
 
 public void object::go(point p)
 {
 	errmode(0);
+	
+	if (isNull(p)) return;
+	
 	float angle = 45;
 	float m = 0.8;
 	int i;
@@ -2395,7 +2464,6 @@ public void object::go(point p)
 		wait(1);
 		i++;
 	}
-	errmode(1);
 }
 
 public void object::go(object o)
@@ -2538,7 +2606,8 @@ public void object::waitForAvailable(int c)
 				Message("Wait for "+ catName(c) +" to be available");
 			}
 			i++;
-			wait(5);
+			cacheGrid();
+			wait(0.5);
 		}
 	}
 	else if (c == PowerCell)
@@ -2556,7 +2625,8 @@ public void object::waitForAvailable(int c)
 				Message("Wait for "+ catName(c) +" to be available");
 			}
 			i++;
-			wait(5);
+			cacheGrid();
+			wait(0.5);
 		}
 	}
 	else
@@ -2568,7 +2638,8 @@ public void object::waitForAvailable(int c)
 				Message("Wait for "+ catName(c) +" to be available");
 			}
 			i++;
-			wait(5);
+			cacheGrid();
+			wait(0.5);
 		}
 	}
 }
@@ -2583,7 +2654,8 @@ public void object::waitForAvailable(int c, point p)
 			Message("Wait for "+ catName(c) +" to be available");
 		}
 		i++;
-		wait(5);
+		cacheGrid();
+		wait(0.5);
 	}
 }
 
@@ -2597,7 +2669,8 @@ public void object::waitForAvailable(int c, float d)
 			Message("Wait for "+ catName(c) +" to be available");
 		}
 		i++;
-		wait(5);
+		cacheGrid();
+		wait(0.5);
 	}
 }
 
@@ -2611,7 +2684,8 @@ public void object::waitForResearch(int c)
 			Message("Waiting for research to complete...");
 		}
 		i++;
-		wait(5);
+		cacheGrid();
+		wait(0.5);
 	}
 }
 
@@ -2857,7 +2931,7 @@ public void object::repair()
 		else
 		{
 			Message("RepairCenter is in use, go nearby RepairCenter and wait for release");
-			p = randomFreePoint(repairCenter.position,10,30); 
+			p = randomFreePoint(repairCenter.position,8,50);
 			go(p);
 		}
 	}
@@ -2881,7 +2955,8 @@ public void object::repair()
 				gotoSafeLZ();
 			} 
 		}
-		wait(1);
+		cacheGrid();
+		wait(0.1);
 	}
 	
 	if ((category == WingedShooter || category == WingedOrgaShooter) && distance2d(this.position,repairCenter.position) > 100)
@@ -2892,19 +2967,19 @@ public void object::repair()
 	go(RepairCenter);
 	while (this.shieldLevel < 1)
 	{
-		wait(1);
+		cacheGrid();
+		wait(0.1);
 	}
-	move(-3);
-	com.repairQueue.dequeue(this);
-	if (category != WingedShooter && category != WingedOrgaShooter && !found(com.ants))
+	if (this.category != WingedShooter && this.category != WingedOrgaShooter && !found(com.ants))
 	{
 		go(p);
 	}
 	else
 	{
-		p = randomFreePoint(repairCenter.position,10,30); 
-		go(p);
+		p = space(this.position);
+		if (isNull(p)) move(-5); else go(p);
 	}
+	com.repairQueue.dequeue(this);
 	com.returnMessage = category+": Repaired";
 	com.returnCode = 0;
 }
@@ -2941,7 +3016,7 @@ public void object::chargeCell()
 	
 	if (com.chargeQueue.peek(this) != this)
 	{
-		if (category == WingedShooter || category == WingedOrgaShooter)
+		if (this.category == WingedShooter || this.category == WingedOrgaShooter)
 		{
 			Message("PowerStation is in use, land and wait for release");
 			gotoSafeLZ();
@@ -2949,7 +3024,7 @@ public void object::chargeCell()
 		else
 		{
 			Message("PowerStation is in use, go nearby PowerStation and wait for release");
-			p = randomFreePoint(powerStation.position,10,30); 
+			p = randomFreePoint(powerStation.position,8,50);
 			go(p);
 		}
 	}
@@ -2973,7 +3048,8 @@ public void object::chargeCell()
 				gotoSafeLZ();
 			} 
 		}
-		wait(1);
+		cacheGrid();
+		wait(0.1);
 	}
 	
 	if ((category == WingedShooter || category == WingedOrgaShooter) && distance2d(this.position,powerStation.position) > 100)
@@ -2986,7 +3062,8 @@ public void object::chargeCell()
 	{
 		while (this.energyCell.energyLevel < 1)
 		{
-			wait(1);
+			cacheGrid();
+			wait(0.1);
 		}
 		
 		if (this.load != null)
@@ -2995,11 +3072,11 @@ public void object::chargeCell()
 			{
 				while (this.load.energyLevel < 1)
 				{
-					wait(1);
+					cacheGrid();
+					wait(0.1);
 				}
 			}
 		}
-		move(-3);
 	}
 	else // powerStation.category == PowerCaptor
 	{
@@ -3021,7 +3098,8 @@ public void object::chargeCell()
 			{
 				while (this.energyCell.energyLevel < 1)
 				{
-					wait(1);
+					cacheGrid();
+					wait(0.1);
 				}
 			}
 			else
@@ -3039,7 +3117,8 @@ public void object::chargeCell()
 		{
 			while (this.energyCell.energyLevel < 1)
 			{
-				wait(1);
+				cacheGrid();
+				wait(0.1);
 			}
 			
 			// Calculate the angle difference
@@ -3069,16 +3148,16 @@ public void object::chargeCell()
 		}
 	}
 	
-	com.chargeQueue.dequeue(this);
 	if (isShooter(category) && !found(com.ants))
 	{
 		go(p);
 	}
 	else
 	{
-		p = randomFreePoint(powerStation.position,10,30); 
-		go(p);
+		p = space(this.position);
+		if (isNull(p)) move(-5); else go(p);
 	}
+	com.chargeQueue.dequeue(this);
 	com.returnMessage = category+": Charged PowerCell";
 	com.returnCode = 0;
 }
@@ -3133,7 +3212,8 @@ public void object::checkEnergyCell()
 	
 	while (this.energyCell == null)
 	{
-		wait(5);
+		cacheGrid();
+		wait(0.5);
 	}
 	
 	if (found(BotFactory))
@@ -3143,7 +3223,8 @@ public void object::checkEnergyCell()
 			while (radar(Any,180,90,0,12) != null)
 			{
 				Message("Wait for exit path to be cleared");
-				wait(5);
+				cacheGrid();
+				wait(0.5);
 			}
 			camerafocus(this);
 			move(-7);
@@ -3667,7 +3748,8 @@ public void object::Builder()
 					go(space(location(SpaceShip),35,60,4));
 				}
 			}
-			wait(2);
+			cacheGrid();
+			wait(0.5);
 		}
 		
 		shooter = radar(WingedOrgaShooter);
@@ -3699,7 +3781,8 @@ public void object::Builder()
 		
 		while (search(com.ALL_BOTS,p,0,8) != null)
 		{
-			wait(5);
+			cacheGrid();
+			wait(0.5);
 		}
 		go(p);
 		build(c);
@@ -3758,7 +3841,8 @@ public void object::Build(int c, point p)
 	
 	while (com.builderInUsed)
 	{
-		wait(5);
+		cacheGrid();
+		wait(0.5);
 	}
 	
 	if (!found(com.builderBotCategory))
@@ -3853,7 +3937,7 @@ public bool object::nearObstacles(point c)
 
 public point object::randomFreePoint(point center, float minDistance, float maxDistance)
 {
-	point randomPoint = space(center,minDistance,maxDistance,4);
+	point randomPoint;
 	int maxAttempts = 100; // Limit the number of attempts to find a free point
 	
 	for (int i = 0; i < maxAttempts; i++)
@@ -3878,7 +3962,10 @@ public point object::randomFreePoint(point center, float minDistance, float maxD
 			return randomPoint; // Return the first free point found
 		}
 	}
-	return space(center,minDistance,maxDistance,4);
+	randomPoint = space(center);
+	randomPoint.z = topo(randomPoint);
+	Debug("randomFreePoint not found, fall back to space to get freepoint x,y,z: "+randomPoint.x+", "+randomPoint.y+", "+randomPoint.z);
+	return randomPoint;
 }
 
 public bool object::isFreePoint(point p)
@@ -4347,8 +4434,6 @@ public void object::PhazerAim(object target)
 	float elapsedTime;
 	object current;
 	
-	errmode(0);
-	
 	// Initialize the old variables for first tracking
 	oldBearing = this.orientation + direction(target.position);
 	oldRange = distance2d(this.position, target.position);
@@ -4483,7 +4568,6 @@ public void object::PhazerAim(object target)
 			}
 		}
 	}
-	errmode(1);
 }
 
 public void object::aimAndFire(object target)
@@ -4532,8 +4616,6 @@ public void object::aimAndFire(object target)
 	float fireTime;
 	float elapsedTime;
 	object current;
-	
-	errmode(0);
 	
 	// Initialize the old variables for first tracking
 	oldBearing = this.orientation + direction(target.position);
@@ -4719,7 +4801,6 @@ public void object::aimAndFire(object target)
 			}
 		}
 	}
-	errmode(1);
 }
 
 public bool object::fireAt(point p)
@@ -4909,6 +4990,29 @@ public void object::gotoSafeLZ()
 	gotoSafeLZ(this);
 }
 
+public void object::gotoSafeLZ(object o)
+{
+	SatCom com();
+	
+	if (o == null) return;
+	
+	float t = abstime();
+	
+	jet(1);
+	ipf(10000);
+	point landingPoint = searchSafeLZ(o.position);
+	ipf(100);
+	if (landingPoint.x == 0 && landingPoint.y == 0 && landingPoint.z == 0)
+	{
+		Message("Could not found safe landing point! Emergency landing at current position.");
+		landingPoint = this.position;
+		landingPoint.z = topo(landingPoint);
+	}
+	jet(1);
+	Message("Found safe landing point at " + distance2d(this.position,landingPoint) + " m, elapsed time "+(abstime() - t) +" second(s)");
+	landAndRest(landingPoint);
+}
+
 public bool object::isFlat(point p, float radius)
 {
 	//return (flatground(p,1) > 0);
@@ -4977,7 +5081,7 @@ public point object::searchSafeLZ(point botPos)
 	int dQ[6] = { 0, -1, -1, 0, 1,  1};
 	int dR[6] = {-1,  0,  1, 1, 0, -1};
 	
-	for (int radius = 1; radius <= 8; radius++)
+	for (int radius = 1; radius <= 12; radius++)
 	{
 		// Start at E corner of the hex ring
 		int Q = botQ + radius;
@@ -5017,27 +5121,6 @@ public point object::searchSafeLZ(point botPos)
 	empty.y = 0;
 	empty.z = 0;
 	return empty;
-}
-
-public void object::gotoSafeLZ(object o)
-{
-	SatCom com();
-	
-	float t = abstime();
-	
-	jet(1);
-	ipf(10000);
-	point landingPoint = searchSafeLZ(this.position);
-	ipf(100);
-	if (landingPoint.x == 0 && landingPoint.y == 0 && landingPoint.z == 0)
-	{
-		Message("Could not found safe landing point! Emergency landing at current position.");
-		landingPoint = this.position;
-		landingPoint.z = topo(landingPoint);
-	}
-	jet(1);
-	Message("Found safe landing point at " + distance2d(this.position,landingPoint) + " m, elapsed time "+(abstime() - t) +" second(s)");
-	landAndRest(landingPoint);
 }
 
 public float object::speed(point p)
@@ -5134,6 +5217,26 @@ public void object::avoidObstacle()
 	}
 }
 
+public void object::restOnSlope()
+{
+	if (this.altitude > 0) return;
+	
+	point behind,left,right;
+	float d = 1.5;
+	// check if rest on slope
+	if (flatground(this.position,0.1) < 0.1)
+	{
+		behind = behindPoint(d);
+		left = leftPoint(this.position,behind);
+		right = rightPoint(this.position,behind);
+		motor(speed(left),speed(right));
+	}
+	else // rest on flat ground
+	{
+		motor(0,0);
+	}
+}
+
 public void object::landAndRest(point p)
 {
 	SatCom com();
@@ -5165,15 +5268,15 @@ public void object::landAndRest(point p)
 		dir = direction(p);
 		motor(1-dir/22.5,1+dir/22.5);
 		
-		enemy = search(com.ants,p,0,com.attackRange);
-		if (enemy != null) checkEnemy();
+		//enemy = search(com.ants,p,0,com.attackRange);
+		//if (enemy != null) checkEnemy();
 		
 		avoidObstacle();
 		
 		dis2d = distance2d(this.position,p);
 	}
 	
-	checkEnemy();
+	//checkEnemy();
 	motor(0,0);
 	
 	while (this.temperature > 0)
@@ -5182,19 +5285,9 @@ public void object::landAndRest(point p)
 		{
 			jet(-0.8);
 		}
-		// check if rest on slope
-		if (flatground(this.position,0.1) < 0.1)
-		{
-			behind = behindPoint(d);
-			left = leftPoint(this.position,behind);
-			right = rightPoint(this.position,behind);
-			motor(speed(left),speed(right));
-		}
-		else // rest on flat ground
-		{
-			motor(0,0);
-		}
+		restOnSlope();
 		checkEnemy();
+		cacheGrid();
 	}
 }
 
@@ -5236,6 +5329,11 @@ public point object::getRestPoint(object center, float radius)
 
 public void object::checkSelfStatus()
 {
+	checkSelfStatus(this);
+}
+
+public void object::checkSelfStatus(object o)
+{
 	SatCom com();
 	
 	if (com.cachedNodes > 500 && com.temperatureThreshold > 0.6 && com.waterNodes*100/com.cachedNodes > 50)
@@ -5247,7 +5345,7 @@ public void object::checkSelfStatus()
 	if (this.temperature > com.temperatureThreshold)
 	{
 		aim(0,0);
-		gotoSafeLZ();
+		gotoSafeLZ(o);
 	}
 	
 	if (this.energyCell.energyLevel < com.energyThreshold)
@@ -5269,37 +5367,9 @@ public void object::checkSelfStatus()
 			chargeCell();
 		}
 	}
-}
-
-public void object::checkSelfStatus(object target)
-{
-	SatCom com();
 	
-	if (this.temperature > com.temperatureThreshold)
-	{
-		aim(0,0);
-		gotoSafeLZ(target);
-	}
-	
-	if (this.energyCell.energyLevel < com.energyThreshold)
-	{
-		aim(0,0);
-		chargeCell();
-		if (this.shieldLevel < com.shieldThreshold)
-		{
-			repair();
-		}
-	}
-	
-	if (this.shieldLevel < com.shieldThreshold)
-	{
-		aim(0,0);
-		repair();
-		if (this.energyCell.energyLevel < com.energyThreshold)
-		{
-			chargeCell();
-		}
-	}
+	restOnSlope();
+	checkEnemy();
 }
 
 public void object::checkSelfStatus(object center, float radius)
@@ -5360,13 +5430,15 @@ public void object::serviceTowers()
 	object towers[],o;
 	point p;
 	bool lowEnergy;
+	object powerStation = radar(PowerStation);
 	
-	p = flatspace(location(PowerStation),0.5,15,25,1);
+	while (com.cachedNodes < 0)
+	{
+		wait(0.2);
+	}
 	
-	chargeCell();
-	go(p);
-	
-	towers = radarall(DefenseTower);
+	p = randomFreePoint(powerStation.position,10,30);
+	goGrab(PowerCell);
 	lowEnergy = false;
 	while (true)
 	{
@@ -5377,25 +5449,38 @@ public void object::serviceTowers()
 		}
 		else
 		{
-			wait(5);
+			checkSelfStatus();
+			cacheGrid();
+			wait(0.5);
 		}
 		
 		towers = radarall(DefenseTower);
 		lowEnergy = false;
 		for (int i = 0; i < sizeof(towers); i++)
 		{
+			goGrab(PowerCell);
+			if (this.load != null && this.load.energyLevel < 1) chargeCell();
+			
 			o = towers[i];
-			if (o.energyCell != null && o.energyCell.energyLevel < com.energyThreshold)
+			if (o.energyCell == null)
+			{
+				moveObjToPlace(PowerCell,o.position);
+			}
+			else if (o.energyCell != null && o.energyCell.energyLevel < com.energyThreshold)
 			{
 				go(o);
-				while (distance2Wasp(position) < com.safeAnt)
+				while (distance2Ants(o.position) < com.safeQueen)
 				{
-					wait(2);
+					cacheGrid();
+					wait(0.1);
+					if (o.energyCell.energyLevel <= 0.2) break;
 				}
-				switchCell();
+				switchCell(DefenseTower);
 				lowEnergy = true;
 				break;
 			}
+			cacheGrid();
+			wait(0.1);
 		}
 	}
 }
@@ -5421,13 +5506,12 @@ public void object::attack()
 
 public void object::airAttack()
 {
-	airAttack(this,1000);
+	airAttack(this,1200);
 }
 
 public void object::airAttack(object o,float radius)
 {
 	errmode(0);
-	
 	SatCom com();
 	
 	while (com.cachedNodes < 0)
@@ -5453,17 +5537,23 @@ public void object::airAttack(object o,float radius)
 		
 		target = search(com.enemies,center.position,0,detectRange);
 		
+		// if no enemy, check if worm is hiden under ground
 		if (target == null && com.detectedWorm)
 		{
 			target = Radar(AlienWorm);
 		}
 		
-		// if no enemy, mission is completed
-		if (target == null) break;
+		// if no enemy and no Alien Egg remains, mission is completed
+		if (target == null && radar(com.enemies) == null) break;
 		
-		if (target.category == AlienWorm && topo(target.position) < 0)
+		// if no enemy detected within detectRange, check distance to center and fly back if needed
+		if (target == null || topo(target.position) < 0.5)
 		{
-			Message("Target is underwater, wait for next target");
+			if (target == null) Message("Target is out of range, wait for it to come closer");
+			else Message("Target is underwater, wait for it to come on land");
+			if (distance2d(this.position,center.position) > radius/2) fly(center.position);
+			else checkEnemy();
+			cacheGrid();
 			wait(0.01);
 			continue;
 		}
@@ -5534,91 +5624,6 @@ public void object::airAttack(object o,float radius)
 	
 	gotoSafeLZ();
 	missionComplete();
-	errmode(1);
-}
-
-public void object::airGuard(object center, float radius)
-{
-	errmode(0);
-	SatCom com();
-	object enemy,root;
-	float dir,dis2Base,dis2Enemy,detectRange;
-	point p,start,left,right;
-	
-	if (center == null)
-	{
-		attack();
-		return;
-	}
-	
-	//start = getRestPoint(center,radius/2);
-	start = this.position;
-	detectRange = radius + com.attackRange;
-	
-	while (true)
-	{
-		checkSelfStatus();
-		
-		if (center == null)
-		{
-			attack();
-			break;
-		}
-		
-		if (com.detectedEgg && !com.detectedWasp)
-		{
-			if (radar(AlienWasp) != null)
-			{
-				com.detectedWasp = true;
-			}
-		}
-		
-		enemy = search(com.ants,center.position);
-		if (enemy == null)
-		{
-			wait(0.1);
-			continue;
-		}
-		else
-		{
-			if (topo(enemy.position) < 0 || distance2d(this.position,center.position) > radius)
-			{
-				p = mid(enemy.position,center.position,radius/2);
-				p.z = topo(p);
-				//p = space(p,8,12,4);
-				//p = start;
-				if (distance2d(this.position,p) > 2) landAndRest(p);
-				wait(0.1);
-				continue;
-			}
-		}
-		
-		moveAndDestroy(enemy);
-		
-		if (found(PowerCaptor))
-		{
-			if (distance2d(this.position,center.position) > radius && distance2d(this.position,location(PowerCaptor)) > 40)
-			{
-				motor(0,0);
-				aimAndFire(enemy);
-			}
-		}
-		else
-		{
-			if (distance2d(this.position,center.position) > radius)
-			{
-				if (center.category == SpaceShip)
-				{
-					motor(0,0);
-					aimAndFire(enemy);
-				}
-			}
-		}
-	}
-	
-	landAndRest(start);
-	missionComplete();
-	errmode(1);
 }
 
 public void object::landAttack()
@@ -5744,7 +5749,6 @@ public void object::landAttack()
 		}
 	}
 	missionComplete();
-	errmode(1);
 }
 
 public void object::baseGuard(object center, float radius)
@@ -5835,7 +5839,6 @@ public void object::baseGuard(object center, float radius)
 		}
 	}
 	missionComplete();
-	errmode(1);	
 }
 
 // Hex cube distance between two node indices (number of hex steps)
@@ -5996,7 +5999,7 @@ public point[] object::searchEscapeMountainPath(point botPoint, point target)
 		for (int d = 0; d < 6; d++)
 		{
 			next = getNeighborIndex(current, d);
-			if (next == -1) continue;
+			if (next == -1 || next == parent[current]) continue;
 			nextZ = getNodeZ(next);
 			// --- UNIVERSAL CHECK: Blocks > 26 degrees slopes ---
 			// Both bots cannot climb steep walls, and fly bot stays in valleys
