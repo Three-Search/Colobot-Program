@@ -5522,6 +5522,7 @@ public void object::airAttack(object o,float radius)
 	object target,enemy,root,center;
 	float dir,dis2d,dis2Base,dis2Enemy,detectRange;
 	point p,hit,last,start,left,right;
+	float t = abstime();
 	
 	center = o;
 	detectRange = radius;
@@ -5535,6 +5536,7 @@ public void object::airAttack(object o,float radius)
 		// check if this level has wasp
 		if (!com.detectedWasp && radar(AlienWasp) != null) com.detectedWasp = true;
 		
+		if (center == null) center == this;
 		target = search(com.enemies,center.position,0,detectRange);
 		
 		// if no enemy, check if worm is hiden under ground
@@ -5549,9 +5551,13 @@ public void object::airAttack(object o,float radius)
 		// if no enemy detected within detectRange, check distance to center and fly back if needed
 		if (target == null || topo(target.position) < 0.5)
 		{
-			if (target == null) Message("Target is out of range, wait for it to come closer");
-			else Message("Target is underwater, wait for it to come on land");
-			if (distance2d(this.position,center.position) > radius/2) fly(center.position);
+			if (abstime() - t > 10)
+			{
+				if (target == null) Message("Target is out of range, wait for it to come closer");
+				else Message("Target is underwater, wait for it to come on land");
+				t = abstime();
+			}
+			if (distance2d(this.position,center.position) > radius/2) fly(mid(this.position,center.position,radius/4));
 			else checkEnemy();
 			cacheGrid();
 			wait(0.01);
