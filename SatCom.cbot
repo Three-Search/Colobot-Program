@@ -1,5 +1,5 @@
 /*
-19 November 2026
+22 November 2026
 
 ThreeSearch library program for Colobot Gold Edition. This library program is shared across all missions on the 9 planets, from Earth to Terranova.
 For flying shooter bots, this library program used "ThreeSearch Progressive Caching Pattern" which is a masterpiece of optimization in game AI for pathfinding:
@@ -428,6 +428,7 @@ public class SatCom
 	static int debugIndex = 0;
 	static int debugCount = 0;  // Total messages stored (for tracking)
 	static bool debug = false; // to control store debug or not
+	static float lastShow;
 	
 	public void SatCom()
 	{
@@ -998,6 +999,8 @@ public class SatCom
 		CATEGORY_NAMES[903] = "ApolloModule";
 		CATEGORY_NAMES[904] = "ApolloAntenna";
 		CATEGORY_NAMES[910] = "Home";
+		
+		lastShow = abstime();
 		
 		// init gridZ
 		for (int i = 0; i < totalNodes; i++)
@@ -1878,158 +1881,27 @@ public bool object::isOnWater(float d)
 
 public int object::jetPower(point p)
 {
-	SatCom com();
-	
-	float tan8 = 0.1405;
-	float tan9 = 0.1584;
-	float tan10 = 0.1763;
-	float tan12 = 0.2126;
-	float tan14 = 0.2493;
-	float tan15 = 0.2679;
-	float tan16 = 0.2867;
-	float tan17 = 0.3057;
-	float tan18 = 0.3249;
-	float tan19 = 0.3443;
-	float tan20 = 0.3639;
-	float tan = 0.35;
-	float h;
 	float dis = distance2d(this.position,p);
+	float desiredZ = p.z + dis * 0.2126; // tan12
+	float error = desiredZ - this.position.z;
 	
-	if (dis <= com.attackRange)
+	if (error > 2)
 	{
-		h = dis*tan8;
+		jet(0.5); // Climb
 	}
-	else if (dis <= com.attackRange*2)
+	else if (error > 1)
 	{
-		h = dis*tan10;
+		jet(0.3); // Climb
 	}
-	else if (dis <= com.attackRange*3)
+	else if (error < -1)
 	{
-		h = dis*tan14;
-	}
-	else if (dis <= com.attackRange*4)
-	{
-		h = dis*tan18;
+		jet(-0.3); // Descend
 	}
 	else
 	{
-		h = dis*tan20;
+		jet(0.05); // Maintain altitude
 	}
 	
-	if (this.position.z < p.z - h)
-	{
-		jet(1);
-		return 1;
-	}
-	
-	if (this.position.z < p.z)
-	{
-		jet(1);
-		return 0;
-	}
-	
-	// optimal height
-	if (p.z <= this.position.z && this.position.z <= p.z + h)
-	{
-		if (dis <= com.attackRange)
-		{
-			// if flying on water
-			if (isOnWater(10))
-			{
-				if (this.position.z < p.z + 3 && this.position.z < 3)
-				{
-					jet(0.7);
-					//Debug("Optimal height, within attack range, flying on water. if (this.position.z < p.z + 3) " + this.position.z + ", p.z " + p.z);
-					return 0;
-				}
-				else
-				{
-					jet(0.05);
-					return 0;
-				}
-			}
-			else // on land
-			{
-				jet(0.05);
-				return 0;
-			}
-		}
-		else
-		{
-			jet(0.05);
-			return 0;
-		}
-	}
-	
-	if (this.position.z > p.z + h)
-	{
-		if (dis <= com.attackRange)
-		{
-			// if flying on water
-			if (isOnWater(10))
-			{
-				if (this.position.z > p.z + h && this.position.z > p.z + 4 && this.position.z > 4)
-				{
-					jet(-0.3);
-					//Debug("Bot is higher than optimal height, within attack range, flying on water. if (this.position.z > p.z + h && this.position.z > p.z + 4) " + this.position.z + ", p.z " + p.z + ", h " + h);
-					return 0;
-				}
-				else if (this.position.z < 3)
-				{
-					jet(0.7);
-					return 0;
-				}
-				else
-				{
-					jet(0.05);
-					return 0;					
-				}
-			}
-			else // on land
-			{
-				jet(-0.3);
-				return 0;
-			}
-		}
-		else // if far way
-		{
-			// if flying on water
-			if (isOnWater(10))
-			{
-				if (this.position.z > p.z + h && this.position.z > 4)
-				{
-					jet(-0.3);
-					//Debug("Bot is higher than optimal height, not within attack range, flying on water. if (this.position.z > p.z + h && && this.position.z > 4) " + this.position.z + ", p.z " + p.z + ", h" + h);
-					return 0;
-				}
-				else if (this.position.z < 3)
-				{
-					jet(0.7);
-					return 0;
-				}
-				else
-				{
-					jet(0.05);
-					return 0;
-				}
-			}
-			else // on land
-			{
-				if (this.altitude > 2)
-				{
-					jet(-0.3);
-					return 0;
-				}
-				else
-				{
-					jet(0.05);
-					return 0;
-				}
-			}
-		}
-	}
-	
-	jet(0.7);
 	return 0;
 }
 
@@ -2152,8 +2024,35 @@ public void object::fly2Wasp(object target)
 
 public void object::fly(point p)
 {
+	float dir = direction(p);
+	
+	// Detect another friendly shooter ahead
+	int wingmen[];
+	wingmen[0] = WingedShooter;
+	wingmen[1] = WingedOrgaShooter;
+	
+	object buddy;
+	buddy = radar(wingmen, 0, 45, 0, 12);
+	
+	if (buddy != null)
+	{
+		// Give the two approaching shooters opposite
+		// steering offsets to break the collision course.
+		if (this.position.x > buddy.position.x || (this.position.x == buddy.position.x && this.position.y > buddy.position.y))
+		{
+			dir += 30;
+		}
+		else
+		{
+			dir -= 30;
+		}
+		
+		if (dir > 180) dir -= 360;
+		if (dir < -180) dir += 360;
+	}
+	
 	jetPower(p);
-	motorPower(direction(p));
+	motorPower(dir);
 	cacheGrid();
 	avoidObstacle();	
 }
@@ -3205,6 +3104,8 @@ public void object::chargeCell(int c)
 
 public void object::checkEnergyCell()
 {
+	SatCom com();
+	
 	if (this.energyCell == null)
 	{
 		Message("Wait for EnergyCell to be loaded");
@@ -3220,7 +3121,7 @@ public void object::checkEnergyCell()
 	{
 		if (distance2d(this.position,location(BotFactory)) < 3)
 		{
-			while (radar(Any,180,90,0,12) != null)
+			while (radar(com.ALL_BOTS,180,90,0,12) != null)
 			{
 				Message("Wait for exit path to be cleared");
 				cacheGrid();
@@ -3542,12 +3443,11 @@ public point[] object::flatSpacesAroundCenter(point p, float flatmin, float radi
 		angle = angleIncrement * i;
 		p1.x = p.x + radius * cos(angle);
 		p1.y = p.y + radius * sin(angle);
-		p1.z = -1;
 		p1.z = topo(p1);
 		
-		pj = flatspace(p1,flatmin,0,2,1);
+		pj = flatspace(p1,flatmin,0,10,4);;
 		
-		if (topo(pj) >= 0 && flatground(pj,flatmin) >= (flatmin - 0.2))
+		if (topo(pj) > 0 && flatground(pj,flatmin) >= flatmin-0.1)
 		{
 			if (j == 0)
 			{
@@ -3570,12 +3470,11 @@ public point[] object::flatSpacesAroundCenter(point p, float flatmin, float radi
 		angle = angleIncrement * i;
 		p2.x = p.x + (radius + 12) * cos(angle);
 		p2.y = p.y + (radius + 12) * sin(angle);
-		p2.z = -1;
 		p2.z = topo(p2);
 		
-		pj = flatspace(p2,flatmin,0,2,1);
+		pj = flatspace(p2,flatmin,0,10,4);;
 		
-		if (topo(pj) >= 0 && flatground(pj,flatmin) >= (flatmin - 0.2))
+		if (topo(pj) > 0 && flatground(pj,flatmin) >= flatmin-0.1)
 		{
 			if (j == 0)
 			{
@@ -3742,6 +3641,7 @@ public void object::Builder()
 		{
 			if (distance2Enemies(this.position) <= com.safeAnt)
 			{
+				wait(10);
 				go(space(position,20,40,4));
 				if (distance2d(position,location(SpaceShip)) < 25)
 				{
@@ -3785,7 +3685,7 @@ public void object::Builder()
 			wait(0.5);
 		}
 		go(p);
-		build(c);
+		if (build(c) != 0) Message("Error could not build "+catName(c));
 		
 		if (shooter == null && com.builderCameraFocus)
 		{
@@ -3813,6 +3713,12 @@ public void object::Builder()
 		else
 		{
 			go(space(p,20,40,4));
+		}
+		
+		if (distance2d(position,p) < 20)
+		{
+			turn(direction(p)+180);
+			move(15);
 		}
 		
 		if (distance2d(position,location(SpaceShip)) < 25)
@@ -5427,7 +5333,7 @@ public void object::serviceTowers()
 {
 	SatCom com();
 	
-	object towers[],o;
+	object towers[],shooters[],o;
 	point p;
 	bool lowEnergy;
 	object powerStation = radar(PowerStation);
@@ -5482,6 +5388,47 @@ public void object::serviceTowers()
 			cacheGrid();
 			wait(0.1);
 		}
+		if (lowEnergy) continue;
+		
+		shooters = radarall(WingedOrgaShooter);
+		lowEnergy = false;
+		for (int i = 0; i < sizeof(shooters); i++)
+		{
+			goGrab(PowerCell);
+			if (this.load != null && this.load.energyLevel < 1) chargeCell();
+			
+			o = shooters[i];
+			if (o.energyCell != null && o.energyCell.energyLevel == 0)
+			{
+				go(o);
+				switchCell(WingedOrgaShooter);
+				lowEnergy = true;
+				break;
+			}
+			cacheGrid();
+			wait(0.1);
+		}
+		if (lowEnergy) continue;
+		
+		shooters = radarall(WingedShooter);
+		lowEnergy = false;
+		for (int i = 0; i < sizeof(shooters); i++)
+		{
+			goGrab(PowerCell);
+			if (this.load != null && this.load.energyLevel < 1) chargeCell();
+			
+			o = shooters[i];
+			if (o.energyCell != null && o.energyCell.energyLevel == 0)
+			{
+				go(o);
+				switchCell(WingedShooter);
+				lowEnergy = true;
+				break;
+			}
+			cacheGrid();
+			wait(0.1);
+		}
+		if (lowEnergy) continue;		
 	}
 }
 
@@ -5509,6 +5456,11 @@ public void object::airAttack()
 	airAttack(this,1200);
 }
 
+public void object::airGuard(object o,float radius)
+{
+	airAttack(o,radius);
+}
+
 public void object::airAttack(object o,float radius)
 {
 	errmode(0);
@@ -5519,12 +5471,17 @@ public void object::airAttack(object o,float radius)
 		wait(0.2);
 	}
 	
-	object target,enemy,root,center;
+	object target,enemy,root;
 	float dir,dis2d,dis2Base,dis2Enemy,detectRange;
-	point p,hit,last,start,left,right;
-	float t = abstime();
+	point center,p,hit,last,start,left,right;
 	
-	center = o;
+	bool defensive = false;
+	
+	if (o != null && o != this)
+	{
+		defensive = true;
+		start = o.position;
+	}
 	detectRange = radius;
 	
 	while (true)
@@ -5536,8 +5493,17 @@ public void object::airAttack(object o,float radius)
 		// check if this level has wasp
 		if (!com.detectedWasp && radar(AlienWasp) != null) com.detectedWasp = true;
 		
-		if (center == null) center == this;
-		target = search(com.enemies,center.position,0,detectRange);
+		if (defensive)
+		{
+			if (o != null) center = o.position;
+			else center = start;
+		}
+		else
+		{
+			center = this.position;
+		}
+		
+		target = search(com.enemies,center,0,detectRange);
 		
 		// if no enemy, check if worm is hiden under ground
 		if (target == null && com.detectedWorm)
@@ -5551,16 +5517,24 @@ public void object::airAttack(object o,float radius)
 		// if no enemy detected within detectRange, check distance to center and fly back if needed
 		if (target == null || topo(target.position) < 0.5)
 		{
-			if (abstime() - t > 10)
+			if (abstime() - com.lastShow > 10)
 			{
 				if (target == null) Message("Target is out of range, wait for it to come closer");
 				else Message("Target is underwater, wait for it to come on land");
-				t = abstime();
+				com.lastShow = abstime();
 			}
-			if (distance2d(this.position,center.position) > radius/2) fly(mid(this.position,center.position,radius/4));
-			else checkEnemy();
-			cacheGrid();
-			wait(0.01);
+			
+			if (defensive)
+			{
+				if (distance2d(this.position,center) > radius/2 && this.altitude > 2)
+				{
+					fly(mid(this.position,center,radius/4));
+				}
+				else
+				{
+					checkEnemy();
+				}
+			}
 			continue;
 		}
 		
