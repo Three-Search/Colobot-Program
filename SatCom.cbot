@@ -4594,7 +4594,12 @@ public void object::aimAndFire(object target)
 		if (rt < 0.001) rt = 0.001;
 		
 		// Calculate weapon elevation
-		elevation = atan2(zt,rt);
+		elevation = atan2(zt, rt);
+		corr = atan2(target.position.z - this.position.z - (cos(pitch) * cos(roll) * weaponHeight + sin(pitch) * weaponOffset), distance2d(this.position, target.position) - (weaponOffset * cos(azimuth) * cos(pitch) - sin(pitch) * weaponHeight));
+		if (abs(elevation - corr) > 3)
+		{
+			elevation = corr;
+		}
 		
 		cosAngle = cos(elevation);
 		if (abs(cosAngle) < 0.001) cosAngle = 0.001;
@@ -6147,13 +6152,17 @@ public void object::escapeMountain(point botPoint, point target)
 			if (dis < 0.001) dis = 0.001;
 			dif = target.z-this.position.z;
 			ang = asin(dif/dis);
-			if (this.position.z < target.z + 15)
+			if (this.altitude < 0.5 || this.pitch > 15)
+			{
+				jet(0.5); // Climb
+			}
+			else if (this.position.z < target.z + 15)
 			{
 				jet(1-(ang/-20));
 			}
 			else
 			{
-				jet(0);
+				jet(0.05);
 			}
 			motorPower(direction(p));
 			cacheGrid();
